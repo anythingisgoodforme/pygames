@@ -18,21 +18,21 @@ class Rider:
         self.y = y
         self.vx = 0.0
         self.vy = 0.0
-    self.angle = 0.0  # bike tilt in degrees
-    self.on_ground = False
-    self.width = 48
-    self.height = 24
-    # suspension / wheel state
-    self.wheel_offset = 24
-    self.wheel_radius = 14
-    self.front_wheel_y = y + 12
-    self.rear_wheel_y = y + 12
-    self.front_wheel_vy = 0.0
-    self.rear_wheel_vy = 0.0
-    # physics params
-    self.spring_k = 8000.0
-    self.damper_c = 800.0
-    self.mass = 70.0
+        self.angle = 0.0  # bike tilt in degrees
+        self.on_ground = False
+        self.width = 48
+        self.height = 24
+        # suspension / wheel state
+        self.wheel_offset = 28
+        self.wheel_radius = 14
+        self.front_wheel_y = y + 12
+        self.rear_wheel_y = y + 12
+        self.front_wheel_vy = 0.0
+        self.rear_wheel_vy = 0.0
+        # physics params
+        self.spring_k = 7000.0
+        self.damper_c = 700.0
+        self.mass = 75.0
 
     def update(self, dt, terrain, keys):
         # horizontal control
@@ -57,11 +57,19 @@ class Rider:
 
         # jump
         if (keys[pygame.K_UP] or keys[pygame.K_SPACE]) and self.on_ground:
-            self.vy = -950.0
+            jump_vel = -800.0
+            self.vy = jump_vel
+            # give wheels the same upward velocity so bike lifts together
+            self.front_wheel_vy = self.vy
+            self.rear_wheel_vy = self.vy
+            # position wheels relative to body so whole bike leaves ground
+            self.front_wheel_y = self.y + 12
+            self.rear_wheel_y = self.y + 12
             self.on_ground = False
-            self._played_jump = False
 
         # integrate body
+        # clamp vertical speed to avoid extreme launches
+        self.vy = max(-1400.0, min(1400.0, self.vy))
         self.x += self.vx * dt
         self.y += self.vy * dt
 
@@ -69,44 +77,59 @@ class Rider:
         front_x = self.x + self.wheel_offset
         rear_x = self.x - self.wheel_offset
 
-        # front wheel dynamics
+        # wheel contact & simplified suspension impulse (stable)
+        rest_length = 12.0
+        max_impulse = 6000.0
+
+        # front wheel
         front_ground = terrain.get_ground_y(front_x)
         desired_front_y = front_ground - self.wheel_radius
-        # spring based on wheel relative to body
-        f_compression = (self.y + 12) - desired_front_y
-        f_spring = -self.spring_k * (f_compression - 12)
-        f_damper = -self.damper_c * self.front_wheel_vy
-        f_total = (f_spring + f_damper) / self.mass
-        self.front_wheel_vy += f_total * dt
-        self.front_wheel_y += self.front_wheel_vy * dt
+        current_front_len = (self.y + 12) - desired_front_y
+        front_pen = rest_length - current_front_len
+        if front_pen > 0:
+            # apply spring impulse to body (upward)
+            impulse = self.spring_k * front_pen
+            impulse = max(-max_impulse, min(max_impulse, impulse))
+            # damping using body vertical velocity
+            damp = self.damper_c * self.vy
+            total = (impulse - damp) / self.mass
+            self.vy -= total * dt
+            # set wheel on ground
+            self.front_wheel_y = desired_front_y
+        else:
+            # wheel in air follows ground position
+            self.front_wheel_y = desired_front_y
 
-        # rear wheel dynamics
+        # rear wheel
         rear_ground = terrain.get_ground_y(rear_x)
         desired_rear_y = rear_ground - self.wheel_radius
-        r_compression = (self.y + 12) - desired_rear_y
-        r_spring = -self.spring_k * (r_compression - 12)
-        r_damper = -self.damper_c * self.rear_wheel_vy
-        r_total = (r_spring + r_damper) / self.mass
-        self.rear_wheel_vy += r_total * dt
-        self.rear_wheel_y += self.rear_wheel_vy * dt
-
-        # collision: wheels should not go below desired positions
-        if self.front_wheel_y > desired_front_y:
-            self.front_wheel_y = desired_front_y
-            self.front_wheel_vy = 0
-            # transfer impulse to body
-            self.vy += -f_spring / 100.0 * dt
-
-        if self.rear_wheel_y > desired_rear_y:
+        current_rear_len = (self.y + 12) - desired_rear_y
+        rear_pen = rest_length - current_rear_len
+        if rear_pen > 0:
+            impulse = self.spring_k * rear_pen
+            impulse = max(-max_impulse, min(max_impulse, impulse))
+            damp = self.damper_c * self.vy
+            total = (impulse - damp) / self.mass
+            self.vy -= total * dt
             self.rear_wheel_y = desired_rear_y
-            self.rear_wheel_vy = 0
-            self.vy += -r_spring / 100.0 * dt
+        else:
+            self.rear_wheel_y = desired_rear_y
 
-        # determine if on ground (any wheel contacting)
-        if self.front_wheel_y >= desired_front_y - 0.1 or self.rear_wheel_y >= desired_rear_y - 0.1:
+        # ensure body doesn't sink below the wheels: clamp body y above the lowest wheel
+        min_wheel_y = min(self.front_wheel_y, self.rear_wheel_y)
+        target_body_y = min_wheel_y - 12
+        if self.y > target_body_y:
+            # correct position and stop downward velocity
+            self.y = target_body_y
+            if self.vy > 0:
+                self.vy = 0
             self.on_ground = True
         else:
-            self.on_ground = False
+            # determine if on ground (any wheel contacting)
+            if self.front_wheel_y >= desired_front_y - 0.1 or self.rear_wheel_y >= desired_rear_y - 0.1:
+                self.on_ground = True
+            else:
+                self.on_ground = False
 
         # keep angle within reasonable range
         self.angle = max(-75, min(75, self.angle))
@@ -122,26 +145,36 @@ class Rider:
             bike_img = pygame.image.load(os.path.join('assets', 'bike.png')).convert_alpha()
             rider_img = pygame.image.load(os.path.join('assets', 'rider.png')).convert_alpha()
             wheel_img = pygame.image.load(os.path.join('assets', 'wheel.png')).convert_alpha()
-            bw = bike_img.get_width()
-            bh = bike_img.get_height()
             # rotate images for tilt
             rot_bike = pygame.transform.rotozoom(bike_img, -self.angle, 1.0)
             rbw, rbh = rot_bike.get_size()
-            surf.blit(rot_bike, (rx - rbw // 2, ry - rbh // 2))
+            bx = rx - rbw // 2
+            by = ry - rbh // 2
+            if math.isfinite(bx) and math.isfinite(by):
+                surf.blit(rot_bike, (int(bx), int(by)))
             rot_rider = pygame.transform.rotozoom(rider_img, -self.angle, 1.0)
-            surf.blit(rot_rider, (rx - rot_rider.get_width() // 2 + 8, ry - rbh // 2 - 18))
+            rxr = rx - rot_rider.get_width() // 2 + 8
+            ryr = ry - rbh // 2 - 18
+            if math.isfinite(rxr) and math.isfinite(ryr):
+                surf.blit(rot_rider, (int(rxr), int(ryr)))
             # wheels: draw at wheel positions
             front_wx = int((self.x + self.wheel_offset) - cam_x)
             rear_wx = int((self.x - self.wheel_offset) - cam_x)
             fw_img = pygame.transform.rotozoom(wheel_img, 0, 1.0)
-            surf.blit(fw_img, (front_wx - fw_img.get_width()//2, int(self.front_wheel_y) - fw_img.get_height()//2))
-            surf.blit(fw_img, (rear_wx - fw_img.get_width()//2, int(self.rear_wheel_y) - fw_img.get_height()//2))
+            fwx = front_wx - fw_img.get_width()//2
+            fwy = int(self.front_wheel_y) - fw_img.get_height()//2
+            rwx = rear_wx - fw_img.get_width()//2
+            rwy = int(self.rear_wheel_y) - fw_img.get_height()//2
+            if math.isfinite(fwx) and math.isfinite(fwy):
+                surf.blit(fw_img, (int(fwx), int(fwy)))
+            if math.isfinite(rwx) and math.isfinite(rwy):
+                surf.blit(fw_img, (int(rwx), int(rwy)))
         except Exception:
             # fallback to simple shapes
             wheel_r = 12
-            pygame.draw.circle(surf, (20, 20, 20), (rx - 18, int(self.rear_wheel_y) + 12 - int(self.y - ry)), wheel_r)
-            pygame.draw.circle(surf, (20, 20, 20), (rx + 18, int(self.front_wheel_y) + 12 - int(self.y - ry)), wheel_r)
-            pygame.draw.rect(surf, (200, 60, 40), pygame.Rect(rx - 20, ry - 8, 40, 12))
+            pygame.draw.circle(surf, (20, 20, 20), (int(rx - 18), int(self.rear_wheel_y) + 12 - int(self.y - ry)), wheel_r)
+            pygame.draw.circle(surf, (20, 20, 20), (int(rx + 18), int(self.front_wheel_y) + 12 - int(self.y - ry)), wheel_r)
+            pygame.draw.rect(surf, (200, 60, 40), pygame.Rect(int(rx - 20), int(ry - 8), 40, 12))
             pygame.draw.circle(surf, (50, 50, 200), (rx + 8, ry - 8), 8)
 
 
