@@ -16,7 +16,7 @@ Deliverables
 - Any required assets included in `assets/` or clearly documented.
 
 Acceptance criteria
-- The game runs on macOS with `python3 basketball.py` after installing dependencies.
+- The game runs on macOS with after installing dependencies.
 - Controls are documented and intuitive (arrow keys for movement/jump).
 - No crashes on launch; basic playthrough completes without errors.
 
