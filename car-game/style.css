@@ -28,6 +28,39 @@ body {
     min-width: 400px;
 }
 
+.energy-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 140px;
+}
+
+.energy-label {
+    font-size: 12px;
+    opacity: 0.9;
+    margin-bottom: 6px;
+}
+
+.energy-bar {
+    width: 150px;
+    height: 25px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 2px solid rgba(255,255,255,0.6);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 5px;
+}
+
+.energy-fill {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background-image: linear-gradient(90deg, #00ffcc 0%, #00aaff 100%);
+    background-color: #00ffcc;
+    transition: width 0.1s linear;
+    box-sizing: border-box;
+}
+
 canvas {
     border: 3px solid white;
     background: linear-gradient(to bottom, #87CEEB 0%, #E0F6FF 100%);

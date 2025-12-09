@@ -1,12 +1,43 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Game variables
+// Defaults and game variables
+const DEFAULT_BASE_SPEED = 5;
+const DEFAULT_ENEMY_SPEED = 3;
+const DEFAULT_SPAWN_RATE = 0.02;
+const HYPER_MULTIPLIER = 3;
+const HYPER_DURATION_FRAMES = 300; // 5 seconds at ~60fps
+
 let gameRunning = true;
 let score = 0;
 let level = 1;
 let highScore = localStorage.getItem('carGameHighScore') || 0;
 document.getElementById('highScore').textContent = highScore;
+
+// Energy / Hyper mode
+let energy = 0;
+const MAX_ENERGY = 100;
+const ENERGY_CHARGE_RATE = 0.15; // per frame (increased for visibility)
+let hyperActive = false;
+let hyperTimer = 0;
+let savedSpawnRate = null;
+
+// Simple star field used during hyper mode
+let stars = [];
+const STAR_COUNT = 80;
+function initStars() {
+    stars = [];
+    for (let i = 0; i < STAR_COUNT; i++) {
+        stars.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 2 + 0.5,
+            speed: Math.random() * 0.6 + 0.2,
+            alpha: Math.random() * 0.6 + 0.2
+        });
+    }
+}
+initStars();
 
 // Player car
 const player = {
@@ -14,8 +45,8 @@ const player = {
     y: canvas.height - 80,
     width: 40,
     height: 60,
-    baseSpeed: 5,
-    speed: 5,
+    baseSpeed: DEFAULT_BASE_SPEED,
+    speed: DEFAULT_BASE_SPEED,
     dx: 0,
     hasShield: false,
     shieldTimer: 0
@@ -24,8 +55,8 @@ const player = {
 // Enemies array
 let enemies = [];
 let powerups = [];
-let enemySpeed = 3;
-let spawnRate = 0.02;
+let enemySpeed = DEFAULT_ENEMY_SPEED;
+let spawnRate = DEFAULT_SPAWN_RATE;
 let frameCount = 0;
 
 // Input handling
@@ -43,6 +74,12 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
         player.isBraking = true;
         player.dx = 0;
+    }
+
+    // Activate hyper when energy full and Up arrow / W pressed
+    if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') && energy >= MAX_ENERGY && !hyperActive) {
+        e.preventDefault();
+        startHyper();
     }
 });
 
@@ -247,7 +284,14 @@ function checkPowerUpCollision() {
                 showPowerUpNotification('🛡️ Shield Activated!');
             } else {
                 score += 50;
-                showPowerUpNotification('⚡ Speed Boost!');
+                // Speed powerup now also charges energy
+                energy = Math.min(MAX_ENERGY, energy + 30);
+                showPowerUpNotification('⚡ Speed Boost! Energy +30');
+                // Update energy UI immediately
+                const fillEl = document.getElementById('energyFill');
+                if (fillEl) {
+                    fillEl.style.width = Math.floor((energy / MAX_ENERGY) * 100) + '%';
+                }
             }
             powerups.splice(i, 1);
         }
@@ -262,6 +306,29 @@ function showPowerUpNotification(text) {
     setTimeout(() => {
         el.style.display = 'none';
     }, 2000);
+}
+
+// Hyper mode control
+function startHyper() {
+    if (hyperActive) return;
+    hyperActive = true;
+    hyperTimer = HYPER_DURATION_FRAMES;
+    savedSpawnRate = spawnRate;
+    spawnRate = Math.max(0.001, spawnRate * 0.5); // fewer cars while hyper
+    player.baseSpeed = player.baseSpeed * HYPER_MULTIPLIER;
+    player.speed = player.baseSpeed;
+    energy = 0;
+    showPowerUpNotification('🚀 HYPER SPEED!');
+}
+
+function endHyper() {
+    hyperActive = false;
+    hyperTimer = 0;
+    if (savedSpawnRate !== null) spawnRate = savedSpawnRate;
+    player.baseSpeed = DEFAULT_BASE_SPEED;
+    player.speed = player.baseSpeed;
+    savedSpawnRate = null;
+    initStars();
 }
 
 // Update game
@@ -293,6 +360,25 @@ function update() {
     // Check powerup collection
     checkPowerUpCollision();
 
+    // Charge energy when not hyper
+    if (!hyperActive) {
+        energy = Math.min(MAX_ENERGY, energy + ENERGY_CHARGE_RATE);
+    }
+    // Update energy bar UI
+    const fillEl = document.getElementById('energyFill');
+    if (fillEl) {
+        const percentage = Math.floor((energy / MAX_ENERGY) * 100);
+        fillEl.style.width = percentage + '%';
+    }
+
+    // Manage hyper timer
+    if (hyperActive) {
+        hyperTimer--;
+        if (hyperTimer <= 0) {
+            endHyper();
+        }
+    }
+
     // Increase difficulty and level
     if (frameCount % 150 === 0) {
         enemySpeed += 0.3;
@@ -318,8 +404,26 @@ function update() {
 // Draw everything
 function draw() {
     // Clear canvas
-    ctx.fillStyle = '#87CEEB';
+    if (hyperActive) {
+        // Slightly darker background during hyper
+        ctx.fillStyle = '#0b2b3a';
+    } else {
+        ctx.fillStyle = '#87CEEB';
+    }
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // If hyper, draw subtle starfield in background
+    if (hyperActive) {
+        ctx.save();
+        for (let s of stars) {
+            s.y += s.speed;
+            if (s.y > canvas.height + 2) s.y = -2 - Math.random() * 20;
+            ctx.globalAlpha = s.alpha;
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(s.x, s.y, s.size, s.size);
+        }
+        ctx.restore();
+    }
 
     // Draw road lines
     ctx.strokeStyle = 'white';
@@ -365,8 +469,8 @@ function restartGame() {
     score = 0;
     level = 1;
     frameCount = 0;
-    enemySpeed = 3;
-    spawnRate = 0.02;
+    enemySpeed = DEFAULT_ENEMY_SPEED;
+    spawnRate = DEFAULT_SPAWN_RATE;
     enemies = [];
     powerups = [];
     player.x = canvas.width / 2 - 20;
@@ -375,10 +479,21 @@ function restartGame() {
     player.hasShield = false;
     player.shieldTimer = 0;
     // Reset movement and speed-related states
-    player.baseSpeed = 5;
+    player.baseSpeed = DEFAULT_BASE_SPEED;
     player.speed = player.baseSpeed;
     player.boostTimer = 0;
     player.isBraking = false;
+
+    // Reset energy / hyper
+    energy = 0;
+    hyperActive = false;
+    hyperTimer = 0;
+    savedSpawnRate = null;
+    initStars();
+    const fillEl = document.getElementById('energyFill');
+    if (fillEl) {
+        fillEl.style.width = '0%';
+    }
 
     document.getElementById('gameOver').style.display = 'none';
     document.getElementById('score').textContent = score;
