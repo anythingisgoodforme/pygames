@@ -76,15 +76,18 @@ canvas {
     justify-content: center;
     position: relative;
     gap: 0;
+    width: 100%;
 }
 
 .touch-zone {
     display: none;
     position: absolute;
+    top: 0;
     height: 100%;
-    width: 100px;
+    width: 50px;
     cursor: pointer;
-    z-index: 10;
+    z-index: 5;
+    background: transparent;
 }
 
 .touch-zone-left {

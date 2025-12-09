@@ -127,62 +127,84 @@ window.addEventListener('keyup', (e) => {
     }
 });
 
-// Touch zone controls - tap left/right of screen to move
-const gameContainer = document.querySelector('.game-container');
-const touchZoneLeft = document.querySelector('.touch-zone-left');
-const touchZoneRight = document.querySelector('.touch-zone-right');
-const restartBtn = document.getElementById('restartBtn');
+// Initialize mobile controls when DOM is ready
+function initMobileControls() {
+    const touchZoneLeft = document.querySelector('.touch-zone-left');
+    const touchZoneRight = document.querySelector('.touch-zone-right');
+    const restartBtn = document.getElementById('restartBtn');
 
-if (touchZoneLeft) {
-    touchZoneLeft.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        mobileLeftPressed = true;
-    });
-    touchZoneLeft.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        mobileLeftPressed = false;
-    });
-    touchZoneLeft.addEventListener('mousedown', () => {
-        mobileLeftPressed = true;
-    });
-    touchZoneLeft.addEventListener('mouseup', () => {
-        mobileLeftPressed = false;
-    });
-}
+    console.log('Mobile controls init:', { touchZoneLeft, touchZoneRight, restartBtn });
 
-if (touchZoneRight) {
-    touchZoneRight.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        mobileRightPressed = true;
-    });
-    touchZoneRight.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        mobileRightPressed = false;
-    });
-    touchZoneRight.addEventListener('mousedown', () => {
-        mobileRightPressed = true;
-    });
-    touchZoneRight.addEventListener('mouseup', () => {
-        mobileRightPressed = false;
-    });
-}
+    // Left touch zone
+    if (touchZoneLeft) {
+        touchZoneLeft.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mobileLeftPressed = true;
+            console.log('Left pressed');
+        });
+        touchZoneLeft.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            mobileLeftPressed = false;
+            console.log('Left released');
+        });
+        touchZoneLeft.addEventListener('mousedown', () => {
+            mobileLeftPressed = true;
+            console.log('Left mouse down');
+        });
+        touchZoneLeft.addEventListener('mouseup', () => {
+            mobileLeftPressed = false;
+            console.log('Left mouse up');
+        });
+        console.log('Left zone listeners attached');
+    }
 
-// Canvas touch controls - tap center to shoot
-const canvas = document.getElementById('gameCanvas');
-if (canvas) {
+    // Right touch zone
+    if (touchZoneRight) {
+        touchZoneRight.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mobileRightPressed = true;
+            console.log('Right pressed');
+        });
+        touchZoneRight.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            mobileRightPressed = false;
+            console.log('Right released');
+        });
+        touchZoneRight.addEventListener('mousedown', () => {
+            mobileRightPressed = true;
+            console.log('Right mouse down');
+        });
+        touchZoneRight.addEventListener('mouseup', () => {
+            mobileRightPressed = false;
+            console.log('Right mouse up');
+        });
+        console.log('Right zone listeners attached');
+    }
+
+    // Canvas touch controls - tap center to shoot
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
         if (gameRunning) {
             shootBullet();
+            console.log('Bullet shot from touch');
         }
     });
+    console.log('Canvas touch listener attached');
+
+    // Restart button
+    if (restartBtn) {
+        restartBtn.addEventListener('click', () => {
+            console.log('Restart button clicked');
+            restartGame();
+        });
+        console.log('Restart button listener attached');
+    } else {
+        console.log('Restart button not found');
+    }
 }
 
-if (restartBtn) {
-    restartBtn.addEventListener('click', () => {
-        restartGame();
-    });
-}
+// Initialize mobile controls when script loads
+initMobileControls();
 
 // Enemy class
 class Enemy {
