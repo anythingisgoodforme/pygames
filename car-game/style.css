@@ -75,6 +75,121 @@ canvas {
     font-size: 14px;
 }
 
+/* Mobile Controls */
+.mobile-controls {
+    display: none;
+    gap: 10px;
+    margin-top: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.mobile-btn {
+    padding: 15px 20px;
+    font-size: 14px;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.1s;
+    color: white;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.mobile-btn:active {
+    transform: scale(0.95);
+    opacity: 0.8;
+}
+
+.mobile-btn-left,
+.mobile-btn-right {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    flex: 1;
+    min-width: 90px;
+}
+
+.mobile-btn-left:active,
+.mobile-btn-right:active {
+    background: linear-gradient(135deg, #5568d3 0%, #63398b 100%);
+}
+
+.mobile-btn-shoot {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    flex: 0 1 auto;
+    min-width: 90px;
+}
+
+.mobile-btn-shoot:active {
+    background: linear-gradient(135deg, #d47de0 0%, #d63d52 100%);
+}
+
+/* Show mobile controls on small screens */
+@media (max-width: 768px) {
+    .mobile-controls {
+        display: flex;
+    }
+
+    .game-info {
+        min-width: 320px;
+        font-size: 14px;
+        gap: 10px;
+    }
+
+    .energy-bar {
+        width: 100px;
+    }
+
+    canvas {
+        width: 100%;
+        height: auto;
+        max-width: 400px;
+    }
+
+    .controls {
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .game-info {
+        flex-direction: column;
+        gap: 5px;
+        font-size: 12px;
+    }
+
+    .energy-container {
+        width: 100%;
+    }
+
+    .mobile-btn {
+        padding: 12px 15px;
+        font-size: 12px;
+    }
+}
+
+.restart-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 15px 40px;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: all 0.3s;
+}
+
+.restart-button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.restart-button:active {
+    transform: scale(0.95);
+}
+
 .game-over {
     position: fixed;
     top: 0;

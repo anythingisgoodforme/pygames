@@ -86,6 +86,9 @@ class Bullet {
 
 // Input handling
 const keys = {};
+let mobileLeftPressed = false;
+let mobileRightPressed = false;
+
 window.addEventListener('keydown', (e) => {
     keys[e.key] = true;
 
@@ -123,6 +126,66 @@ window.addEventListener('keyup', (e) => {
         }
     }
 });
+
+// Mobile button controls
+const leftBtn = document.getElementById('leftBtn');
+const rightBtn = document.getElementById('rightBtn');
+const shootBtn = document.getElementById('shootBtn');
+const restartBtn = document.getElementById('restartBtn');
+
+if (leftBtn) {
+    leftBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        mobileLeftPressed = true;
+    });
+    leftBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        mobileLeftPressed = false;
+    });
+    leftBtn.addEventListener('mousedown', () => {
+        mobileLeftPressed = true;
+    });
+    leftBtn.addEventListener('mouseup', () => {
+        mobileLeftPressed = false;
+    });
+}
+
+if (rightBtn) {
+    rightBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        mobileRightPressed = true;
+    });
+    rightBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        mobileRightPressed = false;
+    });
+    rightBtn.addEventListener('mousedown', () => {
+        mobileRightPressed = true;
+    });
+    rightBtn.addEventListener('mouseup', () => {
+        mobileRightPressed = false;
+    });
+}
+
+if (shootBtn) {
+    shootBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (gameRunning) {
+            shootBullet();
+        }
+    });
+    shootBtn.addEventListener('mousedown', () => {
+        if (gameRunning) {
+            shootBullet();
+        }
+    });
+}
+
+if (restartBtn) {
+    restartBtn.addEventListener('click', () => {
+        restartGame();
+    });
+}
 
 // Enemy class
 class Enemy {
@@ -198,9 +261,9 @@ function updatePlayer() {
     if (player.isBraking) {
         player.dx = 0;
     } else {
-        if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
+        if (keys['ArrowLeft'] || keys['a'] || keys['A'] || mobileLeftPressed) {
             player.dx = -player.speed;
-        } else if (keys['ArrowRight'] || keys['d'] || keys['D']) {
+        } else if (keys['ArrowRight'] || keys['d'] || keys['D'] || mobileRightPressed) {
             player.dx = player.speed;
         } else {
             player.dx = 0;
