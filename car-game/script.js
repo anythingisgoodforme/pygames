@@ -374,12 +374,16 @@ function restartGame() {
     player.dx = 0;
     player.hasShield = false;
     player.shieldTimer = 0;
+    // Reset movement and speed-related states
+    player.baseSpeed = 5;
+    player.speed = player.baseSpeed;
+    player.boostTimer = 0;
+    player.isBraking = false;
 
     document.getElementById('gameOver').style.display = 'none';
     document.getElementById('score').textContent = score;
     document.getElementById('level').textContent = level;
 
-    gameLoop();
 }
 
 // Start the game
