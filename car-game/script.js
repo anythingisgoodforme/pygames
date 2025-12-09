@@ -127,54 +127,51 @@ window.addEventListener('keyup', (e) => {
     }
 });
 
-// Mobile button controls
-const leftBtn = document.getElementById('leftBtn');
-const rightBtn = document.getElementById('rightBtn');
-const shootBtn = document.getElementById('shootBtn');
+// Touch zone controls - tap left/right of screen to move
+const gameContainer = document.querySelector('.game-container');
+const touchZoneLeft = document.querySelector('.touch-zone-left');
+const touchZoneRight = document.querySelector('.touch-zone-right');
 const restartBtn = document.getElementById('restartBtn');
 
-if (leftBtn) {
-    leftBtn.addEventListener('touchstart', (e) => {
+if (touchZoneLeft) {
+    touchZoneLeft.addEventListener('touchstart', (e) => {
         e.preventDefault();
         mobileLeftPressed = true;
     });
-    leftBtn.addEventListener('touchend', (e) => {
+    touchZoneLeft.addEventListener('touchend', (e) => {
         e.preventDefault();
         mobileLeftPressed = false;
     });
-    leftBtn.addEventListener('mousedown', () => {
+    touchZoneLeft.addEventListener('mousedown', () => {
         mobileLeftPressed = true;
     });
-    leftBtn.addEventListener('mouseup', () => {
+    touchZoneLeft.addEventListener('mouseup', () => {
         mobileLeftPressed = false;
     });
 }
 
-if (rightBtn) {
-    rightBtn.addEventListener('touchstart', (e) => {
+if (touchZoneRight) {
+    touchZoneRight.addEventListener('touchstart', (e) => {
         e.preventDefault();
         mobileRightPressed = true;
     });
-    rightBtn.addEventListener('touchend', (e) => {
+    touchZoneRight.addEventListener('touchend', (e) => {
         e.preventDefault();
         mobileRightPressed = false;
     });
-    rightBtn.addEventListener('mousedown', () => {
+    touchZoneRight.addEventListener('mousedown', () => {
         mobileRightPressed = true;
     });
-    rightBtn.addEventListener('mouseup', () => {
+    touchZoneRight.addEventListener('mouseup', () => {
         mobileRightPressed = false;
     });
 }
 
-if (shootBtn) {
-    shootBtn.addEventListener('touchstart', (e) => {
+// Canvas touch controls - tap center to shoot
+const canvas = document.getElementById('gameCanvas');
+if (canvas) {
+    canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
-        if (gameRunning) {
-            shootBullet();
-        }
-    });
-    shootBtn.addEventListener('mousedown', () => {
         if (gameRunning) {
             shootBullet();
         }

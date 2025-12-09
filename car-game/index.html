@@ -20,17 +20,14 @@
             </div>
         </div>
         
-        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div class="game-container">
+            <div class="touch-zone touch-zone-left"></div>
+            <canvas id="gameCanvas" width="400" height="600"></canvas>
+            <div class="touch-zone touch-zone-right"></div>
+        </div>
         
         <div class="controls">
             <p>Use arrow keys or A/D to move | Space to shoot | Up/W for hyper mode</p>
-        </div>
-
-        <!-- Mobile Controls -->
-        <div class="mobile-controls">
-            <button id="leftBtn" class="mobile-btn mobile-btn-left">◀ LEFT</button>
-            <button id="shootBtn" class="mobile-btn mobile-btn-shoot">SHOOT</button>
-            <button id="rightBtn" class="mobile-btn mobile-btn-right">RIGHT ▶</button>
         </div>
         
         <div class="game-over" id="gameOver" style="display: none;">
