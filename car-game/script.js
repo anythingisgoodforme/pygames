@@ -1,5 +1,5 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+let canvas;
+let ctx;
 
 // Defaults and game variables
 const DEFAULT_BASE_SPEED = 5;
@@ -128,7 +128,7 @@ window.addEventListener('keyup', (e) => {
 });
 
 // Initialize mobile controls when DOM is ready
-function initMobileControls() {
+function initMobileControls(canvasElement) {
     const touchZoneLeft = document.querySelector('.touch-zone-left');
     const touchZoneRight = document.querySelector('.touch-zone-right');
     const restartBtn = document.getElementById('restartBtn');
@@ -156,6 +156,8 @@ function initMobileControls() {
             console.log('Left mouse up');
         });
         console.log('Left zone listeners attached');
+    } else {
+        console.log('Left touch zone not found');
     }
 
     // Right touch zone
@@ -179,17 +181,21 @@ function initMobileControls() {
             console.log('Right mouse up');
         });
         console.log('Right zone listeners attached');
+    } else {
+        console.log('Right touch zone not found');
     }
 
     // Canvas touch controls - tap center to shoot
-    canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        if (gameRunning) {
-            shootBullet();
-            console.log('Bullet shot from touch');
-        }
-    });
-    console.log('Canvas touch listener attached');
+    if (canvasElement) {
+        canvasElement.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameRunning) {
+                shootBullet();
+                console.log('Bullet shot from touch');
+            }
+        });
+        console.log('Canvas touch listener attached');
+    }
 
     // Restart button
     if (restartBtn) {
@@ -202,9 +208,6 @@ function initMobileControls() {
         console.log('Restart button not found');
     }
 }
-
-// Initialize mobile controls when script loads
-initMobileControls();
 
 // Enemy class
 class Enemy {
@@ -653,5 +656,18 @@ function restartGame() {
 
 }
 
-// Start the game
-gameLoop();
+// Initialize game when DOM is ready
+function initGame() {
+    canvas = document.getElementById('gameCanvas');
+    ctx = canvas.getContext('2d');
+    console.log('Game initialized, canvas:', canvas);
+    initMobileControls(canvas);
+    gameLoop();
+}
+
+// Wait for DOM to be ready before starting
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initGame);
+} else {
+    initGame();
+}
