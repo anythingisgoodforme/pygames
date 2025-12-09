@@ -55,9 +55,34 @@ const player = {
 // Enemies array
 let enemies = [];
 let powerups = [];
+let bullets = [];
 let enemySpeed = DEFAULT_ENEMY_SPEED;
 let spawnRate = DEFAULT_SPAWN_RATE;
 let frameCount = 0;
+
+// Bullet class for gun mechanic
+class Bullet {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 5;
+        this.height = 15;
+        this.speed = 8;
+    }
+
+    update() {
+        this.y -= this.speed;
+    }
+
+    draw() {
+        ctx.fillStyle = '#FFD700';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+
+    isOffScreen() {
+        return this.y < 0;
+    }
+}
 
 // Input handling
 const keys = {};
@@ -68,6 +93,9 @@ window.addEventListener('keydown', (e) => {
         e.preventDefault();
         if (!gameRunning) {
             restartGame();
+        } else {
+            // Fire bullet when Space is pressed
+            shootBullet();
         }
     }
     // Start braking when Down arrow or 's' pressed
@@ -298,7 +326,30 @@ function checkPowerUpCollision() {
     }
 }
 
-// Show powerup notification
+// Check bullet collision with enemies
+function checkBulletCollision() {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+        for (let j = enemies.length - 1; j >= 0; j--) {
+            const enemy = enemies[j];
+            if (
+                bullet.x < enemy.x + enemy.width &&
+                bullet.x + bullet.width > enemy.x &&
+                bullet.y < enemy.y + enemy.height &&
+                bullet.y + bullet.height > enemy.y
+            ) {
+                // Remove bullet and enemy
+                bullets.splice(i, 1);
+                enemies.splice(j, 1);
+                score += 25;
+                showPowerUpNotification('💥 Direct Hit!');
+                break;
+            }
+        }
+    }
+}
+
+// Draw powerup notification
 function showPowerUpNotification(text) {
     const el = document.getElementById('powerupInfo');
     document.getElementById('powerupType').textContent = text;
@@ -306,6 +357,14 @@ function showPowerUpNotification(text) {
     setTimeout(() => {
         el.style.display = 'none';
     }, 2000);
+}
+
+// Shoot bullet
+function shootBullet() {
+    // Fire from center of player car
+    const bulletX = player.x + player.width / 2 - 2.5;
+    const bulletY = player.y;
+    bullets.push(new Bullet(bulletX, bulletY));
 }
 
 // Hyper mode control
@@ -357,8 +416,17 @@ function update() {
         return !powerup.isOffScreen();
     });
 
+    // Update and remove off-screen bullets
+    bullets = bullets.filter(bullet => {
+        bullet.update();
+        return !bullet.isOffScreen();
+    });
+
     // Check powerup collection
     checkPowerUpCollision();
+
+    // Check bullet collisions with enemies
+    checkBulletCollision();
 
     // Charge energy when not hyper
     if (!hyperActive) {
@@ -439,6 +507,7 @@ function draw() {
     drawPlayer();
     enemies.forEach(enemy => enemy.draw());
     powerups.forEach(powerup => powerup.draw());
+    bullets.forEach(bullet => bullet.draw());
 }
 
 // Game loop
@@ -473,6 +542,7 @@ function restartGame() {
     spawnRate = DEFAULT_SPAWN_RATE;
     enemies = [];
     powerups = [];
+    bullets = [];
     player.x = canvas.width / 2 - 20;
     player.y = canvas.height - 80;
     player.dx = 0;
