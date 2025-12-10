@@ -66,8 +66,10 @@ let frameCount = 0;
 // Big gun mechanic
 let killCount = 0;
 const KILLS_FOR_BIG_GUN = 15;
+const BIG_GUN_MAX_USES = 3;
 let hasBigGun = false;
 let bigGunActive = false;
+let bigGunUsesLeft = 0;
 let clearEnemiesTimer = 0;
 const CLEAR_ENEMIES_DURATION = 360; // 6 seconds at ~60fps
 
@@ -107,10 +109,14 @@ window.addEventListener('keydown', (e) => {
         e.preventDefault();
         if (!gameRunning) {
             restartGame();
-        } else if (bigGunActive) {
+        } else if (bigGunActive && bigGunUsesLeft > 0) {
             // Fire big gun - clear all enemies for 6 seconds
             clearEnemiesTimer = CLEAR_ENEMIES_DURATION;
             enemies = [];
+            bigGunUsesLeft--;
+            if (bigGunUsesLeft <= 0) {
+                hasBigGun = false;
+            }
             bigGunActive = false;
         } else {
             // Fire bullet when Space is pressed
@@ -119,7 +125,7 @@ window.addEventListener('keydown', (e) => {
     }
     
     // Activate big gun with 'm' or 'M'
-    if ((e.key === 'm' || e.key === 'M') && hasBigGun && gameRunning) {
+    if ((e.key === 'm' || e.key === 'M') && hasBigGun && gameRunning && bigGunUsesLeft > 0) {
         bigGunActive = !bigGunActive;
     }
     
@@ -449,6 +455,7 @@ function checkBulletCollision() {
                 // Award big gun after 15 kills
                 if (killCount === KILLS_FOR_BIG_GUN) {
                     hasBigGun = true;
+                    bigGunUsesLeft = BIG_GUN_MAX_USES;
                     showPowerUpNotification('🔫 BIG GUN UNLOCKED! Press M to activate, Space to fire!');
                 } else {
                     showPowerUpNotification('💥 Direct Hit!');
@@ -683,6 +690,7 @@ function restartGame() {
     killCount = 0;
     hasBigGun = false;
     bigGunActive = false;
+    bigGunUsesLeft = 0;
     clearEnemiesTimer = 0;
     player.x = canvas.width / 2 - 20;
     player.y = canvas.height - 80;
