@@ -130,37 +130,60 @@ const keys = {};
 let mobileLeftPressed = false;
 let mobileRightPressed = false;
 
+function handleFireAction() {
+    if (!gameRunning) {
+        restartGame();
+        return;
+    }
+    if (bigGunActive && bigGunUsesLeft > 0) {
+        clearEnemiesTimer = CLEAR_ENEMIES_DURATION;
+        enemies = [];
+        bigGunUsesLeft--;
+        if (bigGunUsesLeft <= 0) {
+            hasBigGun = false;
+        }
+        bigGunActive = false;
+    } else {
+        shootBullet();
+    }
+}
+
+function toggleBigGun() {
+    if ((hasBigGun && gameRunning) && bigGunUsesLeft > 0) {
+        bigGunActive = !bigGunActive;
+    }
+}
+
+function startBrake() {
+    player.isBraking = true;
+    player.dx = 0;
+}
+
+function releaseBrake() {
+    if (player.isBraking) {
+        player.isBraking = false;
+        player.boostTimer = 120; // frames of boost (~2 seconds at 60fps)
+        player.speed = player.baseSpeed * 2; // temporary speed multiplier
+        showPowerUpNotification('⚡ Boost Released!');
+    }
+}
+
 window.addEventListener('keydown', (e) => {
     keys[e.key] = true;
 
     if (e.key === ' ') {
         e.preventDefault();
-        if (!gameRunning) {
-            restartGame();
-        } else if (bigGunActive && bigGunUsesLeft > 0) {
-            // Fire big gun - clear all enemies for 6 seconds
-            clearEnemiesTimer = CLEAR_ENEMIES_DURATION;
-            enemies = [];
-            bigGunUsesLeft--;
-            if (bigGunUsesLeft <= 0) {
-                hasBigGun = false;
-            }
-            bigGunActive = false;
-        } else {
-            // Fire bullet when Space is pressed
-            shootBullet();
-        }
+        handleFireAction();
     }
     
     // Activate big gun with 'm' or 'M'
     if ((e.key === 'm' || e.key === 'M') && hasBigGun && gameRunning && bigGunUsesLeft > 0) {
-        bigGunActive = !bigGunActive;
+        toggleBigGun();
     }
     
     // Start braking when Down arrow or 's' pressed
     if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
-        player.isBraking = true;
-        player.dx = 0;
+        startBrake();
     }
 
     // Activate hyper when energy full and Up arrow / W pressed
@@ -174,12 +197,7 @@ window.addEventListener('keyup', (e) => {
     keys[e.key] = false;
     // Release brake: trigger short speed boost
     if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
-        if (player.isBraking) {
-            player.isBraking = false;
-            player.boostTimer = 120; // frames of boost (~2 seconds at 60fps)
-            player.speed = player.baseSpeed * 2; // temporary speed multiplier
-            showPowerUpNotification('⚡ Boost Released!');
-        }
+        releaseBrake();
     }
 });
 
@@ -187,6 +205,10 @@ window.addEventListener('keyup', (e) => {
 function initMobileControls(canvasElement) {
     const touchOverlay = document.getElementById('touchOverlay');
     const restartBtn = document.getElementById('restartBtn');
+    const shootBtn = document.getElementById('shootBtn');
+    const hyperBtn = document.getElementById('hyperBtn');
+    const brakeBtn = document.getElementById('brakeBtn');
+    const bigGunBtn = document.getElementById('bigGunBtn');
 
     console.log('Mobile controls init:', { touchOverlay, restartBtn });
 
@@ -255,6 +277,49 @@ function initMobileControls(canvasElement) {
         console.log('Restart button listener attached');
     } else {
         console.log('Restart button not found');
+    }
+
+    const safePrevent = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    if (shootBtn) {
+        shootBtn.addEventListener('pointerdown', (e) => {
+            safePrevent(e);
+            handleFireAction();
+        });
+    }
+
+    if (hyperBtn) {
+        hyperBtn.addEventListener('pointerdown', (e) => {
+            safePrevent(e);
+            if (energy >= MAX_ENERGY && !hyperActive) {
+                startHyper();
+            }
+        });
+    }
+
+    if (brakeBtn) {
+        brakeBtn.addEventListener('pointerdown', (e) => {
+            safePrevent(e);
+            startBrake();
+        });
+        brakeBtn.addEventListener('pointerup', (e) => {
+            safePrevent(e);
+            releaseBrake();
+        });
+        brakeBtn.addEventListener('pointerleave', (e) => {
+            safePrevent(e);
+            releaseBrake();
+        });
+    }
+
+    if (bigGunBtn) {
+        bigGunBtn.addEventListener('pointerdown', (e) => {
+            safePrevent(e);
+            toggleBigGun();
+        });
     }
 }
 

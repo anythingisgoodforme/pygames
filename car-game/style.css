@@ -93,6 +93,31 @@ canvas {
     font-size: 14px;
 }
 
+.mobile-buttons {
+    display: none;
+    gap: 10px;
+    margin-top: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.mobile-btn {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    min-width: 82px;
+    backdrop-filter: blur(8px);
+    transition: transform 0.1s ease, background 0.2s ease;
+}
+
+.mobile-btn:active {
+    transform: scale(0.97);
+    background: rgba(255, 255, 255, 0.2);
+}
+
 /* Show touch zones on mobile */
 @media (max-width: 768px) {
     .touch-zone {
@@ -117,6 +142,10 @@ canvas {
 
     .controls {
         font-size: 12px;
+    }
+
+    .mobile-buttons {
+        display: flex;
     }
 }
 
