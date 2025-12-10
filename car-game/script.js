@@ -73,6 +73,34 @@ let bigGunUsesLeft = 0;
 let clearEnemiesTimer = 0;
 const CLEAR_ENEMIES_DURATION = 360; // 6 seconds at ~60fps
 
+// Soundtrack (procedural, relaxing, ~60s loop)
+let audioCtx = null;
+let masterGain = null;
+let soundtrackStarted = false;
+let soundtrackIntervalId = null;
+
+function stopSoundtrack() {
+    if (!soundtrackStarted) return;
+    if (soundtrackIntervalId) {
+        clearInterval(soundtrackIntervalId);
+        soundtrackIntervalId = null;
+    }
+    if (audioCtx && masterGain) {
+        const now = audioCtx.currentTime;
+        masterGain.gain.cancelScheduledValues(now);
+        masterGain.gain.linearRampToValueAtTime(0, now + 0.4);
+        setTimeout(() => {
+            audioCtx.suspend();
+            audioCtx = null;
+            masterGain = null;
+        }, 500);
+    } else {
+        audioCtx = null;
+        masterGain = null;
+    }
+    soundtrackStarted = false;
+}
+
 // Bullet class for gun mechanic
 class Bullet {
     constructor(x, y) {
@@ -674,6 +702,7 @@ function endGame() {
     document.getElementById('finalScore').textContent = score;
     document.getElementById('levelReached').textContent = level;
     document.getElementById('gameOver').style.display = 'flex';
+    stopSoundtrack();
 }
 
 // Restart game
@@ -717,7 +746,7 @@ function restartGame() {
     document.getElementById('gameOver').style.display = 'none';
     document.getElementById('score').textContent = score;
     document.getElementById('level').textContent = level;
-
+    startSoundtrack();
 }
 
 // Initialize game when DOM is ready
@@ -742,9 +771,88 @@ function initGame() {
     gameLoop();
 }
 
+// Soundtrack helpers
+function startSoundtrack() {
+    if (soundtrackStarted) return;
+    soundtrackStarted = true;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.08;
+    masterGain.connect(audioCtx.destination);
+
+    // 15-chord progression @4s each => ~60s loop
+    const chords = [
+        [220, 277, 330],  // Amaj-ish
+        [196, 247, 294],  // Gmaj-ish
+        [174, 233, 294],  // Fmaj-ish
+        [196, 247, 330],  // Gmaj/E
+        [220, 262, 330],  // Aadd9
+        [185, 233, 294],  // F#/F#
+        [196, 247, 311],  // Gadd11
+        [165, 220, 277],  // D/A
+        [196, 247, 330],  // Gmaj/E
+        [174, 220, 294],  // Fmaj/A
+        [208, 262, 330],  // Abadd9
+        [196, 247, 311],  // Gadd11
+        [174, 233, 294],  // Fmaj
+        [196, 247, 294],  // Gmaj
+        [220, 277, 330],  // Amaj resolve
+    ];
+    let chordIndex = 0;
+    const chordDuration = 4; // seconds per chord, 4 chords -> ~16s phrase looping
+
+    const scheduleChord = () => {
+        const now = audioCtx.currentTime;
+        const freqs = chords[chordIndex];
+        freqs.forEach(freq => {
+            const osc = audioCtx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(900, now);
+            filter.Q.value = 0.6;
+
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.09, now + 0.4);
+            gain.gain.linearRampToValueAtTime(0.05, now + chordDuration - 0.6);
+            gain.gain.linearRampToValueAtTime(0, now + chordDuration);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(masterGain);
+
+            osc.start(now);
+            osc.stop(now + chordDuration + 0.1);
+        });
+
+        chordIndex = (chordIndex + 1) % chords.length;
+    };
+
+    // Schedule first chord immediately and then loop every chordDuration seconds
+    scheduleChord();
+    soundtrackIntervalId = setInterval(scheduleChord, chordDuration * 1000);
+}
+
+function attachSoundtrackStarter() {
+    const starter = () => {
+        startSoundtrack();
+        document.removeEventListener('keydown', starter, true);
+        document.removeEventListener('pointerdown', starter, true);
+    };
+    document.addEventListener('keydown', starter, true);
+    document.addEventListener('pointerdown', starter, true);
+}
+
 // Wait for DOM to be ready before starting
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initGame);
+    document.addEventListener('DOMContentLoaded', () => {
+        initGame();
+        attachSoundtrackStarter();
+    });
 } else {
     initGame();
+    attachSoundtrackStarter();
 }
