@@ -138,16 +138,7 @@ function handleFireAction() {
         return;
     }
     if (bigGunActive && bigGunUsesLeft > 0) {
-        // Count all enemies currently on screen as cleared shots
-        carsShot += enemies.length;
-        document.getElementById('carCount').textContent = carsShot;
-        clearEnemiesTimer = CLEAR_ENEMIES_DURATION;
-        enemies = [];
-        bigGunUsesLeft--;
-        if (bigGunUsesLeft <= 0) {
-            hasBigGun = false;
-        }
-        bigGunActive = false;
+        fireBigGun();
     } else {
         shootBullet();
     }
@@ -171,6 +162,20 @@ function releaseBrake() {
         player.speed = player.baseSpeed * 2; // temporary speed multiplier
         showPowerUpNotification('⚡ Boost Released!');
     }
+}
+
+function fireBigGun() {
+    if (!hasBigGun || bigGunUsesLeft <= 0 || !gameRunning) return;
+    // Count all enemies currently on screen as cleared shots
+    carsShot += enemies.length;
+    document.getElementById('carCount').textContent = carsShot;
+    clearEnemiesTimer = CLEAR_ENEMIES_DURATION;
+    enemies = [];
+    bigGunUsesLeft--;
+    if (bigGunUsesLeft <= 0) {
+        hasBigGun = false;
+    }
+    bigGunActive = false;
 }
 
 window.addEventListener('keydown', (e) => {
@@ -325,7 +330,7 @@ function initMobileControls(canvasElement) {
     }
 
     if (bigGunBtn) {
-        addPress(bigGunBtn, toggleBigGun);
+        addPress(bigGunBtn, fireBigGun);
     }
 }
 
