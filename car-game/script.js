@@ -284,16 +284,23 @@ function initMobileControls(canvasElement) {
         e.stopPropagation();
     };
 
-    if (shootBtn) {
-        shootBtn.addEventListener('pointerdown', (e) => {
+    const addPress = (el, handler) => {
+        if (!el) return;
+        const wrapped = (e) => {
             safePrevent(e);
-            handleFireAction();
-        });
+            handler();
+        };
+        el.addEventListener('pointerdown', wrapped);
+        el.addEventListener('touchstart', wrapped, { passive: false });
+        el.addEventListener('click', wrapped);
+    };
+
+    if (shootBtn) {
+        addPress(shootBtn, handleFireAction);
     }
 
     if (hyperBtn) {
-        hyperBtn.addEventListener('pointerdown', (e) => {
-            safePrevent(e);
+        addPress(hyperBtn, () => {
             if (energy >= MAX_ENERGY && !hyperActive) {
                 startHyper();
             }
@@ -301,25 +308,19 @@ function initMobileControls(canvasElement) {
     }
 
     if (brakeBtn) {
-        brakeBtn.addEventListener('pointerdown', (e) => {
-            safePrevent(e);
-            startBrake();
-        });
-        brakeBtn.addEventListener('pointerup', (e) => {
-            safePrevent(e);
-            releaseBrake();
-        });
-        brakeBtn.addEventListener('pointerleave', (e) => {
-            safePrevent(e);
-            releaseBrake();
-        });
+        const handleDown = (e) => { safePrevent(e); startBrake(); };
+        const handleUp = (e) => { safePrevent(e); releaseBrake(); };
+        brakeBtn.addEventListener('pointerdown', handleDown);
+        brakeBtn.addEventListener('pointerup', handleUp);
+        brakeBtn.addEventListener('pointerleave', handleUp);
+        brakeBtn.addEventListener('touchstart', handleDown, { passive: false });
+        brakeBtn.addEventListener('touchend', handleUp, { passive: false });
+        brakeBtn.addEventListener('touchcancel', handleUp, { passive: false });
+        brakeBtn.addEventListener('click', handleUp);
     }
 
     if (bigGunBtn) {
-        bigGunBtn.addEventListener('pointerdown', (e) => {
-            safePrevent(e);
-            toggleBigGun();
-        });
+        addPress(bigGunBtn, toggleBigGun);
     }
 }
 
@@ -841,6 +842,10 @@ function startSoundtrack() {
     if (soundtrackStarted) return;
     soundtrackStarted = true;
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Safari sometimes starts suspended; resume to enable sound after gesture
+    if (audioCtx.state === 'suspended' && audioCtx.resume) {
+        audioCtx.resume();
+    }
     masterGain = audioCtx.createGain();
     masterGain.gain.value = 0.08;
     masterGain.connect(audioCtx.destination);

@@ -11,6 +11,7 @@ body {
     min-height: 100vh;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     font-family: 'Arial', sans-serif;
+    touch-action: manipulation; /* prevent double-tap zoom */
 }
 
 .container {
@@ -111,6 +112,7 @@ canvas {
     min-width: 82px;
     backdrop-filter: blur(8px);
     transition: transform 0.1s ease, background 0.2s ease;
+    touch-action: manipulation;
 }
 
 .mobile-btn:active {
