@@ -61,6 +61,8 @@ const player = {
 let enemies = [];
 let powerups = [];
 let bullets = [];
+let explosions = [];
+let aiEnabled = false;
 let enemySpeed = DEFAULT_ENEMY_SPEED;
 let spawnRate = DEFAULT_SPAWN_RATE;
 let frameCount = 0;
@@ -127,10 +129,49 @@ class Bullet {
     }
 }
 
+// Simple explosion effect
+class Explosion {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 0;
+        this.maxRadius = 35;
+        this.life = 18; // frames
+    }
+
+    update() {
+        this.radius = Math.min(this.maxRadius, this.radius + 4);
+        this.life -= 1;
+    }
+
+    draw() {
+        const alpha = Math.max(0, this.life / 18);
+        const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+        gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+        gradient.addColorStop(0.35, `rgba(255, 215, 0, ${alpha})`);
+        gradient.addColorStop(1, `rgba(255, 107, 107, 0)`);
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    isDone() {
+        return this.life <= 0;
+    }
+}
+
 // Input handling
 const keys = {};
 let mobileLeftPressed = false;
 let mobileRightPressed = false;
+
+function setKeyState(e, state) {
+    const raw = e.key || '';
+    if (!raw) return;
+    keys[raw] = state;
+    keys[raw.toLowerCase()] = state;
+}
 
 function handleFireAction() {
     if (!gameRunning) {
@@ -179,7 +220,18 @@ function fireBigGun() {
 }
 
 window.addEventListener('keydown', (e) => {
-    keys[e.key] = true;
+    setKeyState(e, true);
+
+    // Enable AI with O+L, disable with I+K (case-insensitive)
+    if (keys['o'] && keys['l']) {
+        aiEnabled = true;
+        showPowerUpNotification('🤖 AI Engaged');
+    }
+    if (keys['i'] && keys['k']) {
+        aiEnabled = false;
+        player.dx = 0;
+        showPowerUpNotification('🛑 AI Disengaged');
+    }
 
     if (e.key === ' ') {
         e.preventDefault();
@@ -204,7 +256,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('keyup', (e) => {
-    keys[e.key] = false;
+    setKeyState(e, false);
     // Release brake: trigger short speed boost
     if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
         releaseBrake();
@@ -402,22 +454,69 @@ class PowerUp {
     }
 }
 
+function aiTargetX() {
+    // Pick among three lanes to maximize forward clearance and avoid cars ahead
+    const laneCenters = [canvas.width * 0.25, canvas.width * 0.5, canvas.width * 0.75];
+    const laneWidth = canvas.width * 0.3;
+    const safetyMarginX = (player.width / 2) + 18;
+    const safetyMarginY = 120; // lookahead distance
+    let bestLane = laneCenters[1];
+    let bestGap = -Infinity;
+
+    for (const lane of laneCenters) {
+        let minGap = Infinity;
+        for (const enemy of enemies) {
+            // Only consider enemies in or near this lane that are above the player
+            const enemyCenter = enemy.x + enemy.width / 2;
+            const dx = Math.abs(lane - enemyCenter);
+            if (dx > laneWidth / 2 + safetyMarginX) continue;
+
+            const gap = player.y - (enemy.y + enemy.height);
+            if (gap < safetyMarginY) {
+                minGap = Math.min(minGap, gap);
+            }
+        }
+        if (minGap === Infinity) {
+            // No threats in this lane within lookahead; pick immediately
+            bestLane = lane;
+            bestGap = Number.MAX_SAFE_INTEGER;
+            break;
+        }
+        if (minGap > bestGap) {
+            bestGap = minGap;
+            bestLane = lane;
+        }
+    }
+    return bestLane - player.width / 2;
+}
+
 // Update player position
 function updatePlayer() {
-    // If braking, prevent lateral movement
-    if (player.isBraking) {
-        player.dx = 0;
-    } else {
-        if (keys['ArrowLeft'] || keys['a'] || keys['A'] || mobileLeftPressed) {
-            player.dx = -player.speed;
-        } else if (keys['ArrowRight'] || keys['d'] || keys['D'] || mobileRightPressed) {
-            player.dx = player.speed;
+    if (aiEnabled) {
+        player.isBraking = false;
+        const targetX = aiTargetX();
+        if (Math.abs(targetX - player.x) > 2) {
+            player.dx = targetX > player.x ? player.speed : -player.speed;
         } else {
             player.dx = 0;
         }
+        player.x += player.dx;
+    } else {
+        // If braking, prevent lateral movement
+        if (player.isBraking) {
+            player.dx = 0;
+        } else {
+            if (keys['ArrowLeft'] || keys['a'] || keys['A'] || mobileLeftPressed) {
+                player.dx = -player.speed;
+            } else if (keys['ArrowRight'] || keys['d'] || keys['D'] || mobileRightPressed) {
+                player.dx = player.speed;
+            } else {
+                player.dx = 0;
+            }
+        }
+    
+        player.x += player.dx;
     }
-
-    player.x += player.dx;
 
     // Boundary checking
     if (player.x < 0) {
@@ -552,6 +651,7 @@ function checkBulletCollision() {
                 bullets.splice(i, 1);
                 enemies.splice(j, 1);
                 score += 25;
+                explosions.push(new Explosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2));
                 carsShot++;
                 document.getElementById('carCount').textContent = carsShot;
                 
@@ -652,6 +752,12 @@ function update() {
     bullets = bullets.filter(bullet => {
         bullet.update();
         return !bullet.isOffScreen();
+    });
+
+    // Update explosions
+    explosions = explosions.filter(explosion => {
+        explosion.update();
+        return !explosion.isDone();
     });
 
     // Check powerup collection
@@ -758,6 +864,7 @@ function draw() {
     enemies.forEach(enemy => enemy.draw());
     powerups.forEach(powerup => powerup.draw());
     bullets.forEach(bullet => bullet.draw());
+    explosions.forEach(explosion => explosion.draw());
 }
 
 // Game loop
@@ -799,6 +906,7 @@ function restartGame() {
     enemies = [];
     powerups = [];
     bullets = [];
+    explosions = [];
     killCount = 0;
     hasBigGun = false;
     bigGunActive = false;
@@ -814,6 +922,7 @@ function restartGame() {
     player.speed = player.baseSpeed;
     player.boostTimer = 0;
     player.isBraking = false;
+    aiEnabled = false;
 
     // Reset energy / hyper
     energy = 0;
