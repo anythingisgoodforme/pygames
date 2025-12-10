@@ -63,6 +63,14 @@ let enemySpeed = DEFAULT_ENEMY_SPEED;
 let spawnRate = DEFAULT_SPAWN_RATE;
 let frameCount = 0;
 
+// Big gun mechanic
+let killCount = 0;
+const KILLS_FOR_BIG_GUN = 15;
+let hasBigGun = false;
+let bigGunActive = false;
+let clearEnemiesTimer = 0;
+const CLEAR_ENEMIES_DURATION = 360; // 6 seconds at ~60fps
+
 // Bullet class for gun mechanic
 class Bullet {
     constructor(x, y) {
@@ -99,11 +107,22 @@ window.addEventListener('keydown', (e) => {
         e.preventDefault();
         if (!gameRunning) {
             restartGame();
+        } else if (bigGunActive) {
+            // Fire big gun - clear all enemies for 6 seconds
+            clearEnemiesTimer = CLEAR_ENEMIES_DURATION;
+            enemies = [];
+            bigGunActive = false;
         } else {
             // Fire bullet when Space is pressed
             shootBullet();
         }
     }
+    
+    // Activate big gun with 'm' or 'M'
+    if ((e.key === 'm' || e.key === 'M') && hasBigGun && gameRunning) {
+        bigGunActive = !bigGunActive;
+    }
+    
     // Start braking when Down arrow or 's' pressed
     if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
         player.isBraking = true;
@@ -423,7 +442,17 @@ function checkBulletCollision() {
                 bullets.splice(i, 1);
                 enemies.splice(j, 1);
                 score += 25;
-                showPowerUpNotification('💥 Direct Hit!');
+                
+                // Increment kill count
+                killCount++;
+                
+                // Award big gun after 15 kills
+                if (killCount === KILLS_FOR_BIG_GUN) {
+                    hasBigGun = true;
+                    showPowerUpNotification('🔫 BIG GUN UNLOCKED! Press M to activate, Space to fire!');
+                } else {
+                    showPowerUpNotification('💥 Direct Hit!');
+                }
                 break;
             }
         }
@@ -476,9 +505,18 @@ function update() {
     if (!gameRunning) return;
 
     frameCount++;
+    
+    // Update clear enemies timer
+    if (clearEnemiesTimer > 0) {
+        clearEnemiesTimer--;
+    }
 
     updatePlayer();
-    spawnEntity();
+    
+    // Don't spawn enemies while big gun clear effect is active
+    if (clearEnemiesTimer <= 0) {
+        spawnEntity();
+    }
 
     // Update and remove off-screen enemies
     enemies = enemies.filter(enemy => {
@@ -566,6 +604,12 @@ function draw() {
     }
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // If big gun clear effect is active, show white overlay
+    if (clearEnemiesTimer > 0) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.5 * (clearEnemiesTimer / CLEAR_ENEMIES_DURATION)})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
     // Draw road lines
     ctx.strokeStyle = 'white';
     ctx.lineWidth = 2;
@@ -587,6 +631,13 @@ function draw() {
             ctx.fillRect(s.x, s.y, s.size, s.size);
         }
         ctx.restore();
+    }
+
+    // Draw big gun status
+    if (hasBigGun) {
+        ctx.fillStyle = bigGunActive ? '#FF6B6B' : '#FFD700';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(`🔫 BIG GUN ${bigGunActive ? 'ACTIVE' : 'READY'}`, 10, canvas.height - 10);
     }
 
     // Draw game objects
@@ -629,6 +680,10 @@ function restartGame() {
     enemies = [];
     powerups = [];
     bullets = [];
+    killCount = 0;
+    hasBigGun = false;
+    bigGunActive = false;
+    clearEnemiesTimer = 0;
     player.x = canvas.width / 2 - 20;
     player.y = canvas.height - 80;
     player.dx = 0;
