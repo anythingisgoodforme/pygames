@@ -129,72 +129,65 @@ window.addEventListener('keyup', (e) => {
 
 // Initialize mobile controls when DOM is ready
 function initMobileControls(canvasElement) {
-    const touchZoneLeft = document.querySelector('.touch-zone-left');
-    const touchZoneRight = document.querySelector('.touch-zone-right');
+    const touchOverlay = document.getElementById('touchOverlay');
     const restartBtn = document.getElementById('restartBtn');
 
-    console.log('Mobile controls init:', { touchZoneLeft, touchZoneRight, restartBtn });
+    console.log('Mobile controls init:', { touchOverlay, restartBtn });
 
-    // Left touch zone
-    if (touchZoneLeft) {
-        touchZoneLeft.addEventListener('touchstart', (e) => {
+    if (touchOverlay) {
+        // Handle touch events on overlay
+        touchOverlay.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            mobileLeftPressed = true;
-            console.log('Left pressed');
-        });
-        touchZoneLeft.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            mobileLeftPressed = false;
-            console.log('Left released');
-        });
-        touchZoneLeft.addEventListener('mousedown', () => {
-            mobileLeftPressed = true;
-            console.log('Left mouse down');
-        });
-        touchZoneLeft.addEventListener('mouseup', () => {
-            mobileLeftPressed = false;
-            console.log('Left mouse up');
-        });
-        console.log('Left zone listeners attached');
-    } else {
-        console.log('Left touch zone not found');
-    }
-
-    // Right touch zone
-    if (touchZoneRight) {
-        touchZoneRight.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            mobileRightPressed = true;
-            console.log('Right pressed');
-        });
-        touchZoneRight.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            mobileRightPressed = false;
-            console.log('Right released');
-        });
-        touchZoneRight.addEventListener('mousedown', () => {
-            mobileRightPressed = true;
-            console.log('Right mouse down');
-        });
-        touchZoneRight.addEventListener('mouseup', () => {
-            mobileRightPressed = false;
-            console.log('Right mouse up');
-        });
-        console.log('Right zone listeners attached');
-    } else {
-        console.log('Right touch zone not found');
-    }
-
-    // Canvas touch controls - tap center to shoot
-    if (canvasElement) {
-        canvasElement.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (gameRunning) {
-                shootBullet();
-                console.log('Bullet shot from touch');
+            const touch = e.touches[0];
+            const rect = canvasElement.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            
+            if (x < canvasElement.width / 2) {
+                mobileLeftPressed = true;
+                console.log('Touch left');
+            } else {
+                mobileRightPressed = true;
+                console.log('Touch right');
             }
         });
-        console.log('Canvas touch listener attached');
+
+        touchOverlay.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            mobileLeftPressed = false;
+            mobileRightPressed = false;
+            console.log('Touch ended');
+        });
+
+        // Mouse events for desktop testing
+        touchOverlay.addEventListener('mousedown', (e) => {
+            const rect = canvasElement.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            
+            if (x < canvasElement.width / 2) {
+                mobileLeftPressed = true;
+                console.log('Mouse left down');
+            } else {
+                mobileRightPressed = true;
+                console.log('Mouse right down');
+            }
+        });
+
+        touchOverlay.addEventListener('mouseup', (e) => {
+            mobileLeftPressed = false;
+            mobileRightPressed = false;
+            console.log('Mouse up');
+        });
+
+        touchOverlay.addEventListener('click', (e) => {
+            if (gameRunning) {
+                shootBullet();
+                console.log('Shoot from click');
+            }
+        });
+
+        console.log('Touch overlay listeners attached');
+    } else {
+        console.log('Touch overlay not found');
     }
 
     // Restart button
@@ -556,6 +549,11 @@ function update() {
 
 // Draw everything
 function draw() {
+    if (!ctx || !canvas) {
+        console.error('Canvas or context not initialized');
+        return;
+    }
+    
     // Clear canvas
     if (hyperActive) {
         // Slightly darker background during hyper
@@ -659,8 +657,16 @@ function restartGame() {
 // Initialize game when DOM is ready
 function initGame() {
     canvas = document.getElementById('gameCanvas');
+    if (!canvas) {
+        console.error('Canvas element not found!');
+        return;
+    }
     ctx = canvas.getContext('2d');
-    console.log('Game initialized, canvas:', canvas);
+    if (!ctx) {
+        console.error('Failed to get canvas 2D context!');
+        return;
+    }
+    console.log('Game initialized successfully', { canvas: canvas.width + 'x' + canvas.height, ctx });
     initMobileControls(canvas);
     gameLoop();
 }
