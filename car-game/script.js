@@ -13,6 +13,8 @@ let score = 0;
 let level = 1;
 let highScore = localStorage.getItem('carGameHighScore') || 0;
 document.getElementById('highScore').textContent = highScore;
+let carsShot = 0;
+document.getElementById('carCount').textContent = carsShot;
 
 // Energy / Hyper mode
 let energy = 0;
@@ -136,6 +138,9 @@ function handleFireAction() {
         return;
     }
     if (bigGunActive && bigGunUsesLeft > 0) {
+        // Count all enemies currently on screen as cleared shots
+        carsShot += enemies.length;
+        document.getElementById('carCount').textContent = carsShot;
         clearEnemiesTimer = CLEAR_ENEMIES_DURATION;
         enemies = [];
         bigGunUsesLeft--;
@@ -542,6 +547,8 @@ function checkBulletCollision() {
                 bullets.splice(i, 1);
                 enemies.splice(j, 1);
                 score += 25;
+                carsShot++;
+                document.getElementById('carCount').textContent = carsShot;
                 
                 // Increment kill count
                 killCount++;
@@ -767,6 +774,10 @@ function endGame() {
 
     document.getElementById('finalScore').textContent = score;
     document.getElementById('levelReached').textContent = level;
+    const carsShotFinalEl = document.getElementById('carsShotFinal');
+    if (carsShotFinalEl) {
+        carsShotFinalEl.textContent = carsShot;
+    }
     document.getElementById('gameOver').style.display = 'flex';
     stopSoundtrack();
 }
@@ -776,6 +787,7 @@ function restartGame() {
     gameRunning = true;
     score = 0;
     level = 1;
+    carsShot = 0;
     frameCount = 0;
     enemySpeed = DEFAULT_ENEMY_SPEED;
     spawnRate = DEFAULT_SPAWN_RATE;
@@ -812,6 +824,7 @@ function restartGame() {
     document.getElementById('gameOver').style.display = 'none';
     document.getElementById('score').textContent = score;
     document.getElementById('level').textContent = level;
+    document.getElementById('carCount').textContent = carsShot;
     startSoundtrack();
 }
 
@@ -916,13 +929,25 @@ function attachSoundtrackStarter() {
     document.addEventListener('pointerdown', starter, true);
 }
 
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch((err) => {
+                console.error('SW registration failed', err);
+            });
+        });
+    }
+}
+
 // Wait for DOM to be ready before starting
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         initGame();
         attachSoundtrackStarter();
+        registerServiceWorker();
     });
 } else {
     initGame();
     attachSoundtrackStarter();
+    registerServiceWorker();
 }

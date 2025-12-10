@@ -3,8 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a5f9f">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Car Game</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="icons/icon-180.png">
 </head>
 <body>
     <div class="container">
@@ -12,6 +18,7 @@
             <div class="score">Score: <span id="score">0</span></div>
             <div class="level">Level: <span id="level">1</span></div>
             <div class="high-score">High Score: <span id="highScore">0</span></div>
+            <div class="cars-shot">Cars Shot: <span id="carCount">0</span></div>
             <div class="energy-container">
                 <div class="energy-label">Energy</div>
                 <div class="energy-bar" id="energyBar">
@@ -41,6 +48,7 @@
                 <h1>Game Over!</h1>
                 <p>Final Score: <span id="finalScore">0</span></p>
                 <p>Level Reached: <span id="levelReached">1</span></p>
+                <p>Cars Shot: <span id="carsShotFinal">0</span></p>
                 <button id="restartBtn" class="restart-button">Restart Game</button>
             </div>
         </div>
