@@ -63,7 +63,7 @@ body {
 
 canvas {
     border: 3px solid white;
-    background: linear-gradient(to bottom, #87CEEB 0%, #E0F6FF 100%);
+    background: #1a5f9f;
     display: block;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
     cursor: none;

@@ -28,21 +28,24 @@ const STAR_COUNT = 80;
 function initStars() {
     stars = [];
     for (let i = 0; i < STAR_COUNT; i++) {
+        // If canvas isn't initialized yet, use fallback dimensions — we'll recreate after init
+        const w = (canvas && canvas.width) ? canvas.width : 400;
+        const h = (canvas && canvas.height) ? canvas.height : 600;
         stars.push({
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
+            x: Math.random() * w,
+            y: Math.random() * h,
             size: Math.random() * 2 + 0.5,
             speed: Math.random() * 0.6 + 0.2,
             alpha: Math.random() * 0.6 + 0.2
         });
     }
 }
-initStars();
+// don't init stars here — wait until canvas is available in initGame()
 
 // Player car
 const player = {
-    x: canvas.width / 2 - 20,
-    y: canvas.height - 80,
+    x: 0,
+    y: 0,
     width: 40,
     height: 60,
     baseSpeed: DEFAULT_BASE_SPEED,
@@ -554,14 +557,24 @@ function draw() {
         return;
     }
     
-    // Clear canvas
+    // Clear canvas with blue road
     if (hyperActive) {
         // Slightly darker background during hyper
         ctx.fillStyle = '#0b2b3a';
     } else {
-        ctx.fillStyle = '#87CEEB';
+        ctx.fillStyle = '#1a5f9f';
     }
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw road lines
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([20, 10]);
+    ctx.beginPath();
+    ctx.moveTo(canvas.width / 2, 0);
+    ctx.lineTo(canvas.width / 2, canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
     // If hyper, draw subtle starfield in background
     if (hyperActive) {
@@ -575,16 +588,6 @@ function draw() {
         }
         ctx.restore();
     }
-
-    // Draw road lines
-    ctx.strokeStyle = 'white';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([20, 10]);
-    ctx.beginPath();
-    ctx.moveTo(canvas.width / 2, 0);
-    ctx.lineTo(canvas.width / 2, canvas.height);
-    ctx.stroke();
-    ctx.setLineDash([]);
 
     // Draw game objects
     drawPlayer();
@@ -666,6 +669,11 @@ function initGame() {
         console.error('Failed to get canvas 2D context!');
         return;
     }
+    // Initialize player position now that canvas exists
+    player.x = Math.floor(canvas.width / 2 - player.width / 2);
+    player.y = canvas.height - 80;
+    // Initialize starfield with correct canvas dimensions
+    initStars();
     console.log('Game initialized successfully', { canvas: canvas.width + 'x' + canvas.height, ctx });
     initMobileControls(canvas);
     gameLoop();
