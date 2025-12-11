@@ -7,6 +7,7 @@ const DEFAULT_ENEMY_SPEED = 3;
 const DEFAULT_SPAWN_RATE = 0.02;
 const HYPER_MULTIPLIER = 3;
 const HYPER_DURATION_FRAMES = 300; // 5 seconds at ~60fps
+const AI_SPEED_MULTIPLIER = 1.6;
 
 let gameRunning = true;
 let score = 0;
@@ -205,6 +206,18 @@ function releaseBrake() {
     }
 }
 
+function aiObstacles() {
+    // Treat enemies (red) and powerups (yellow/green) as obstacles to dodge
+    const obs = [];
+    for (const e of enemies) {
+        obs.push({ x: e.x, y: e.y, w: e.width, h: e.height });
+    }
+    for (const p of powerups) {
+        obs.push({ x: p.x, y: p.y, w: p.width, h: p.height });
+    }
+    return obs;
+}
+
 function fireBigGun() {
     if (!hasBigGun || bigGunUsesLeft <= 0 || !gameRunning) return;
     // Count all enemies currently on screen as cleared shots
@@ -230,6 +243,7 @@ window.addEventListener('keydown', (e) => {
     if (keys['i'] && keys['k']) {
         aiEnabled = false;
         player.dx = 0;
+        player.speed = player.baseSpeed;
         showPowerUpNotification('🛑 AI Disengaged');
     }
 
@@ -455,50 +469,73 @@ class PowerUp {
 }
 
 function aiTargetX() {
-    // Pick among three lanes to maximize forward clearance and avoid cars ahead
-    const laneCenters = [canvas.width * 0.25, canvas.width * 0.5, canvas.width * 0.75];
-    const laneWidth = canvas.width * 0.3;
-    const safetyMarginX = (player.width / 2) + 18;
-    const safetyMarginY = 120; // lookahead distance
-    let bestLane = laneCenters[1];
-    let bestGap = -Infinity;
+    // Sample multiple candidate positions and pick the safest based on clearance to all obstacles
+    const positions = [0.15, 0.35, 0.5, 0.65, 0.85].map(p => (canvas.width * p) - player.width / 2);
+    const safetyMarginX = (player.width / 2) + 20;
+    const safetyMarginY = 240; // lookahead distance
+    const obs = aiObstacles();
 
-    for (const lane of laneCenters) {
-        let minGap = Infinity;
-        for (const enemy of enemies) {
-            // Only consider enemies in or near this lane that are above the player
-            const enemyCenter = enemy.x + enemy.width / 2;
-            const dx = Math.abs(lane - enemyCenter);
-            if (dx > laneWidth / 2 + safetyMarginX) continue;
+    let bestPos = player.x;
+    let bestScore = Number.POSITIVE_INFINITY;
 
-            const gap = player.y - (enemy.y + enemy.height);
-            if (gap < safetyMarginY) {
-                minGap = Math.min(minGap, gap);
-            }
+    for (const pos of positions) {
+        let score = 0;
+        for (const o of obs) {
+            const obstacleCenter = o.x + o.w / 2;
+            const candidateCenter = pos + player.width / 2;
+            const dx = Math.abs(candidateCenter - obstacleCenter);
+            const gapY = player.y - (o.y + o.h);
+            if (gapY > safetyMarginY) continue; // far enough ahead
+
+            // Penalize overlap/nearby horizontally, weighted by how close vertically
+            const horizontalPenalty = Math.max(0, (o.w / 2) + safetyMarginX - dx);
+            const verticalWeight = Math.max(30, safetyMarginY - gapY); // closer obstacles weigh more
+            score += horizontalPenalty * verticalWeight;
         }
-        if (minGap === Infinity) {
-            // No threats in this lane within lookahead; pick immediately
-            bestLane = lane;
-            bestGap = Number.MAX_SAFE_INTEGER;
-            break;
-        }
-        if (minGap > bestGap) {
-            bestGap = minGap;
-            bestLane = lane;
+        if (score < bestScore) {
+            bestScore = score;
+            bestPos = pos;
         }
     }
-    return bestLane - player.width / 2;
+
+    return Math.max(0, Math.min(bestPos, canvas.width - player.width));
 }
 
 // Update player position
 function updatePlayer() {
     if (aiEnabled) {
         player.isBraking = false;
-        const targetX = aiTargetX();
-        if (Math.abs(targetX - player.x) > 2) {
-            player.dx = targetX > player.x ? player.speed : -player.speed;
+        let targetX = aiTargetX();
+        const delta = targetX - player.x;
+        const baseAiSpeed = player.baseSpeed * AI_SPEED_MULTIPLIER;
+        // Emergency sidestep if something is directly ahead in current lane
+        const obs = aiObstacles();
+        let imminent = null;
+        for (const o of obs) {
+            const overlapX = !(player.x + player.width < o.x || player.x > o.x + o.w);
+            const gapY = player.y - (o.y + o.h);
+            if (overlapX && gapY < 110 && gapY > -60) {
+                imminent = o;
+                break;
+            }
+        }
+        if (imminent) {
+            // Choose direction away from obstacle center
+            const obstacleCenter = imminent.x + imminent.w / 2;
+            const goRight = player.x + player.width / 2 < obstacleCenter;
+            targetX = goRight ? canvas.width * 0.75 - player.width / 2 : canvas.width * 0.25 - player.width / 2;
+        }
+
+        const newDelta = targetX - player.x;
+        if (Math.abs(newDelta) > 2) {
+            // If an obstacle is close, increase lateral speed to dodge faster
+            const closeAhead = Boolean(imminent);
+            const dodgeSpeed = closeAhead ? baseAiSpeed * 1.6 : baseAiSpeed * 1.1;
+            player.speed = dodgeSpeed;
+            player.dx = newDelta > 0 ? player.speed : -player.speed;
         } else {
             player.dx = 0;
+            player.speed = baseAiSpeed * 0.9;
         }
         player.x += player.dx;
     } else {
