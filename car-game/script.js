@@ -8,6 +8,7 @@ const DEFAULT_SPAWN_RATE = 0.02;
 const HYPER_MULTIPLIER = 3;
 const HYPER_DURATION_FRAMES = 300; // 5 seconds at ~60fps
 const AI_SPEED_MULTIPLIER = 1.6;
+const AI_LOOKAHEAD_FRAMES = 60; // ~1 second at 60fps
 
 let gameRunning = true;
 let score = 0;
@@ -206,16 +207,9 @@ function releaseBrake() {
     }
 }
 
+// Combine nearby enemies into an obstacle list for the autopilot to dodge
 function aiObstacles() {
-    // Treat enemies (red) and powerups (yellow/green) as obstacles to dodge
-    const obs = [];
-    for (const e of enemies) {
-        obs.push({ x: e.x, y: e.y, w: e.width, h: e.height });
-    }
-    for (const p of powerups) {
-        obs.push({ x: p.x, y: p.y, w: p.width, h: p.height });
-    }
-    return obs;
+    return enemies.map(e => ({ x: e.x, y: e.y, w: e.width, h: e.height, s: e.speed || enemySpeed }));
 }
 
 function fireBigGun() {
@@ -235,16 +229,16 @@ function fireBigGun() {
 window.addEventListener('keydown', (e) => {
     setKeyState(e, true);
 
-    // Enable AI with O+L, disable with I+K (case-insensitive)
+    // O+L: enable autopilot steering; I+K: disable
     if (keys['o'] && keys['l']) {
         aiEnabled = true;
-        showPowerUpNotification('🤖 AI Engaged');
+        showPowerUpNotification('🤖 Autopilot ON');
     }
     if (keys['i'] && keys['k']) {
         aiEnabled = false;
         player.dx = 0;
         player.speed = player.baseSpeed;
-        showPowerUpNotification('🛑 AI Disengaged');
+        showPowerUpNotification('🛑 Autopilot OFF');
     }
 
     if (e.key === ' ') {
@@ -469,11 +463,12 @@ class PowerUp {
 }
 
 function aiTargetX() {
-    // Sample multiple candidate positions and pick the safest based on clearance to all obstacles
-    const positions = [0.15, 0.35, 0.5, 0.65, 0.85].map(p => (canvas.width * p) - player.width / 2);
-    const safetyMarginX = (player.width / 2) + 20;
-    const safetyMarginY = 240; // lookahead distance
+    // Evaluate several road positions and choose the safest (furthest from nearby enemies)
+    const positions = [0.15, 0.32, 0.5, 0.68, 0.85].map(p => (canvas.width * p) - player.width / 2);
+    const safetyMarginX = (player.width / 2) + 24;
+    const safetyMarginY = 240;
     const obs = aiObstacles();
+    const lookahead = AI_LOOKAHEAD_FRAMES;
 
     let bestPos = player.x;
     let bestScore = Number.POSITIVE_INFINITY;
@@ -481,16 +476,25 @@ function aiTargetX() {
     for (const pos of positions) {
         let score = 0;
         for (const o of obs) {
-            const obstacleCenter = o.x + o.w / 2;
             const candidateCenter = pos + player.width / 2;
+            const obstacleCenter = o.x + o.w / 2;
             const dx = Math.abs(candidateCenter - obstacleCenter);
-            const gapY = player.y - (o.y + o.h);
-            if (gapY > safetyMarginY) continue; // far enough ahead
-
-            // Penalize overlap/nearby horizontally, weighted by how close vertically
+            const projectedY = o.y + o.h + (o.s || 0) * lookahead;
+            const gapY = player.y - projectedY; // >0 means obstacle is ahead of player
+            if (gapY > safetyMarginY) continue;
             const horizontalPenalty = Math.max(0, (o.w / 2) + safetyMarginX - dx);
-            const verticalWeight = Math.max(30, safetyMarginY - gapY); // closer obstacles weigh more
+            const verticalWeight = Math.max(40, safetyMarginY - gapY);
             score += horizontalPenalty * verticalWeight;
+            // Extra side-clear penalty when we are parallel/overlapping in Y (reduce side swipes)
+            if (Math.abs(gapY) < 60 && dx < (o.w / 2 + player.width / 2 + 18)) {
+                score += 5000;
+            }
+            // Corner avoidance: penalize when both horizontal and vertical clearance are tight
+            const halfWidthSum = (o.w / 2) + (player.width / 2);
+            const sepX = dx - halfWidthSum;
+            if (gapY > -40 && gapY < 140 && sepX < 25) {
+                score += (25 - Math.max(0, sepX)) * 180;
+            }
         }
         if (score < bestScore) {
             bestScore = score;
@@ -505,37 +509,16 @@ function aiTargetX() {
 function updatePlayer() {
     if (aiEnabled) {
         player.isBraking = false;
-        let targetX = aiTargetX();
+        const targetX = aiTargetX();
         const delta = targetX - player.x;
         const baseAiSpeed = player.baseSpeed * AI_SPEED_MULTIPLIER;
-        // Emergency sidestep if something is directly ahead in current lane
-        const obs = aiObstacles();
-        let imminent = null;
-        for (const o of obs) {
-            const overlapX = !(player.x + player.width < o.x || player.x > o.x + o.w);
-            const gapY = player.y - (o.y + o.h);
-            if (overlapX && gapY < 110 && gapY > -60) {
-                imminent = o;
-                break;
-            }
-        }
-        if (imminent) {
-            // Choose direction away from obstacle center
-            const obstacleCenter = imminent.x + imminent.w / 2;
-            const goRight = player.x + player.width / 2 < obstacleCenter;
-            targetX = goRight ? canvas.width * 0.75 - player.width / 2 : canvas.width * 0.25 - player.width / 2;
-        }
 
-        const newDelta = targetX - player.x;
-        if (Math.abs(newDelta) > 2) {
-            // If an obstacle is close, increase lateral speed to dodge faster
-            const closeAhead = Boolean(imminent);
-            const dodgeSpeed = closeAhead ? baseAiSpeed * 1.6 : baseAiSpeed * 1.1;
-            player.speed = dodgeSpeed;
-            player.dx = newDelta > 0 ? player.speed : -player.speed;
+        if (Math.abs(delta) > 1.5) {
+            player.speed = baseAiSpeed;
+            player.dx = delta > 0 ? player.speed : -player.speed;
         } else {
             player.dx = 0;
-            player.speed = baseAiSpeed * 0.9;
+            player.speed = player.baseSpeed;
         }
         player.x += player.dx;
     } else {
@@ -551,7 +534,7 @@ function updatePlayer() {
                 player.dx = 0;
             }
         }
-    
+
         player.x += player.dx;
     }
 
@@ -948,6 +931,7 @@ function restartGame() {
     hasBigGun = false;
     bigGunActive = false;
     bigGunUsesLeft = 0;
+    aiEnabled = false;
     clearEnemiesTimer = 0;
     player.x = canvas.width / 2 - 20;
     player.y = canvas.height - 80;
