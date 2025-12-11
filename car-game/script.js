@@ -7,8 +7,9 @@ const DEFAULT_ENEMY_SPEED = 3;
 const DEFAULT_SPAWN_RATE = 0.02;
 const HYPER_MULTIPLIER = 3;
 const HYPER_DURATION_FRAMES = 300; // 5 seconds at ~60fps
-const AI_SPEED_MULTIPLIER = 1.6;
-const AI_LOOKAHEAD_FRAMES = 60; // ~1 second at 60fps
+const AI_SPEED_MULTIPLIER = 1.4; // safer lateral speed for autopilot
+const AI_LOOKAHEAD_FRAMES = 90; // longer lookahead for safety
+const AI_FIRE_COOLDOWN_FRAMES = 20; // ~0.33s between auto shots
 
 let gameRunning = true;
 let score = 0;
@@ -65,6 +66,9 @@ let powerups = [];
 let bullets = [];
 let explosions = [];
 let aiEnabled = false;
+let aiFireCooldown = 0;
+let aiSideToggle = false;
+let invulnerableFrames = 0;
 let enemySpeed = DEFAULT_ENEMY_SPEED;
 let spawnRate = DEFAULT_SPAWN_RATE;
 let frameCount = 0;
@@ -109,15 +113,24 @@ function stopSoundtrack() {
 
 // Bullet class for gun mechanic
 class Bullet {
-    constructor(x, y) {
+    constructor(x, y, targetX = null) {
         this.x = x;
         this.y = y;
         this.width = 5;
         this.height = 15;
         this.speed = 8;
+        this.targetX = targetX;
+        this.homingMax = 2.4;
     }
 
     update() {
+        // Apply slight homing when a target is provided (used by autopilot)
+        if (this.targetX !== null) {
+            const center = this.x + this.width / 2;
+            const dx = this.targetX - center;
+            const step = Math.max(-this.homingMax, Math.min(this.homingMax, dx * 0.12));
+            this.x += step;
+        }
         this.y -= this.speed;
     }
 
@@ -464,11 +477,21 @@ class PowerUp {
 
 function aiTargetX() {
     // Evaluate several road positions and choose the safest (furthest from nearby enemies)
-    const positions = [0.15, 0.32, 0.5, 0.68, 0.85].map(p => (canvas.width * p) - player.width / 2);
-    const safetyMarginX = (player.width / 2) + 24;
-    const safetyMarginY = 240;
+    const positions = [0.12, 0.28, 0.44, 0.56, 0.72, 0.88].map(p => (canvas.width * p) - player.width / 2);
+    const safetyMarginX = (player.width / 2) + 32;
+    const safetyMarginY = 300;
     const obs = aiObstacles();
     const lookahead = AI_LOOKAHEAD_FRAMES;
+    // Find nearest enemy ahead to lightly bias toward for shots
+    let nearestEnemy = null;
+    let nearestDy = Number.POSITIVE_INFINITY;
+    for (const e of enemies) {
+        const dy = player.y - (e.y + e.height);
+        if (dy > 0 && dy < nearestDy) {
+            nearestDy = dy;
+            nearestEnemy = e;
+        }
+    }
 
     let bestPos = player.x;
     let bestScore = Number.POSITIVE_INFINITY;
@@ -483,18 +506,31 @@ function aiTargetX() {
             const gapY = player.y - projectedY; // >0 means obstacle is ahead of player
             if (gapY > safetyMarginY) continue;
             const horizontalPenalty = Math.max(0, (o.w / 2) + safetyMarginX - dx);
-            const verticalWeight = Math.max(40, safetyMarginY - gapY);
+            const verticalWeight = Math.max(80, safetyMarginY - gapY);
             score += horizontalPenalty * verticalWeight;
             // Extra side-clear penalty when we are parallel/overlapping in Y (reduce side swipes)
-            if (Math.abs(gapY) < 60 && dx < (o.w / 2 + player.width / 2 + 18)) {
-                score += 5000;
+            if (Math.abs(gapY) < 100 && dx < (o.w / 2 + player.width / 2 + 18)) {
+                score += 10000;
             }
             // Corner avoidance: penalize when both horizontal and vertical clearance are tight
             const halfWidthSum = (o.w / 2) + (player.width / 2);
             const sepX = dx - halfWidthSum;
-            if (gapY > -40 && gapY < 140 && sepX < 25) {
-                score += (25 - Math.max(0, sepX)) * 180;
+            if (gapY > -60 && gapY < 200 && sepX < 32) {
+                score += (32 - Math.max(0, sepX)) * 260;
             }
+            // Predictive collision: if projected overlap is likely, heavily penalize
+            const projectedOverlap = dx < (halfWidthSum + 26);
+            if (projectedOverlap && gapY < 220 && gapY > -40) {
+                score += 20000;
+            }
+        }
+        // Light attraction toward nearest enemy only when safely far
+        if (nearestEnemy && nearestDy > 200) {
+            const enemyCenter = nearestEnemy.x + nearestEnemy.width / 2;
+            const candidateCenter = pos + player.width / 2;
+            const dxEnemy = Math.abs(candidateCenter - enemyCenter);
+            const attraction = Math.max(0, 240 - dxEnemy);
+            score -= attraction * 4;
         }
         if (score < bestScore) {
             bestScore = score;
@@ -509,16 +545,59 @@ function aiTargetX() {
 function updatePlayer() {
     if (aiEnabled) {
         player.isBraking = false;
-        const targetX = aiTargetX();
+        let targetX = aiTargetX();
+        const obs = aiObstacles();
+        // Look ahead and preemptively steer away if an obstacle will align with our lane soon
+        const preempt = obs.find(o => {
+            const projectedY = o.y + o.h + (o.s || enemySpeed) * AI_LOOKAHEAD_FRAMES;
+            const gapFuture = player.y - projectedY;
+            const overlapX = !(player.x + player.width < o.x || player.x > o.x + o.w);
+            return overlapX && gapFuture > -40 && gapFuture < 260;
+        });
+        if (preempt) {
+            const obstacleCenter = preempt.x + preempt.w / 2;
+            const goRight = player.x + player.width / 2 < obstacleCenter;
+            targetX = goRight ? canvas.width * 0.85 - player.width / 2 : canvas.width * 0.15 - player.width / 2;
+        }
+        // Emergency sidestep if obstacle is right ahead in current path
+        const imminent = obs.find(o => {
+            const overlapX = !(player.x + player.width < o.x || player.x > o.x + o.w);
+            const gapY = player.y - (o.y + o.h);
+            return overlapX && gapY > -40 && gapY < 110;
+        });
+        if (imminent) {
+            const obstacleCenter = imminent.x + imminent.w / 2;
+            const goRight = player.x + player.width / 2 < obstacleCenter;
+            targetX = goRight ? canvas.width * 0.85 - player.width / 2 : canvas.width * 0.15 - player.width / 2;
+        }
+
         const delta = targetX - player.x;
-        const baseAiSpeed = player.baseSpeed * AI_SPEED_MULTIPLIER;
+        let baseAiSpeed = player.baseSpeed * AI_SPEED_MULTIPLIER;
+        const closeAheadCount = obs.filter(o => {
+            const gapY = player.y - (o.y + o.h);
+            const overlapX = !(player.x + player.width < o.x || player.x > o.x + o.w);
+            return overlapX && gapY > -40 && gapY < 200;
+        }).length;
+        if (closeAheadCount > 1) {
+            baseAiSpeed *= 0.85;
+        }
 
         if (Math.abs(delta) > 1.5) {
-            player.speed = baseAiSpeed;
+            player.speed = imminent ? baseAiSpeed * 1.6 : baseAiSpeed;
             player.dx = delta > 0 ? player.speed : -player.speed;
         } else {
             player.dx = 0;
             player.speed = player.baseSpeed;
+        }
+        // If dangerously close horizontally and vertically, brake hard while steering
+        const danger = obs.some(o => {
+            const overlapX = !(player.x + player.width < o.x || player.x > o.x + o.w);
+            const gapY = player.y - (o.y + o.h);
+            return overlapX && gapY > -20 && gapY < 100;
+        });
+        if (danger) {
+            player.speed = Math.max(1, player.baseSpeed * 0.5);
+            player.dx = Math.sign(delta) * player.speed;
         }
         player.x += player.dx;
     } else {
@@ -619,10 +698,10 @@ function checkCollision() {
             player.y < enemy.y + enemy.height &&
             player.y + player.height > enemy.y
         ) {
-            return true;
+            return enemy;
         }
     }
-    return false;
+    return null;
 }
 
 // Check powerup collection
@@ -703,11 +782,11 @@ function showPowerUpNotification(text) {
 }
 
 // Shoot bullet
-function shootBullet() {
-    // Fire from center of player car
-    const bulletX = player.x + player.width / 2 - 2.5;
+function shootBullet(targetX = null, originX = null) {
+    // Fire from center of player car unless an origin override is provided (autopilot uses sides)
+    const bulletX = originX !== null ? originX : player.x + player.width / 2 - 2.5;
     const bulletY = player.y;
-    bullets.push(new Bullet(bulletX, bulletY));
+    bullets.push(new Bullet(bulletX, bulletY, targetX));
 }
 
 // Hyper mode control
@@ -738,6 +817,7 @@ function update() {
     if (!gameRunning) return;
 
     frameCount++;
+    if (aiFireCooldown > 0) aiFireCooldown--;
     
     // Update clear enemies timer
     if (clearEnemiesTimer > 0) {
@@ -745,6 +825,23 @@ function update() {
     }
 
     updatePlayer();
+
+    // Autopilot firing: shoot a bullet if an enemy is directly ahead within range
+    if (aiEnabled && aiFireCooldown <= 0) {
+        const playerCenter = player.x + player.width / 2;
+        const target = enemies.find(enemy => {
+            const enemyCenter = enemy.x + enemy.width / 2;
+            const dx = Math.abs(playerCenter - enemyCenter);
+            const dy = player.y - (enemy.y + enemy.height);
+            return dx < (player.width / 2 + enemy.width / 2 + 8) && dy > 0 && dy < 240;
+        });
+        if (target) {
+            const sideX = aiSideToggle ? (player.x + player.width - 5) : player.x;
+            aiSideToggle = !aiSideToggle;
+            shootBullet(target.x + target.width / 2, sideX);
+            aiFireCooldown = AI_FIRE_COOLDOWN_FRAMES;
+        }
+    }
     
     // Don't spawn enemies while big gun clear effect is active
     if (clearEnemiesTimer <= 0) {
@@ -813,18 +910,25 @@ function update() {
         document.getElementById('level').textContent = level;
     }
 
-    // Check collision with shield
-    if (checkCollision()) {
+    // Check collision with shield / invulnerability
+    const hitEnemy = invulnerableFrames > 0 ? null : checkCollision();
+    if (hitEnemy) {
         if (player.hasShield) {
             player.hasShield = false;
             player.shieldTimer = 0;
-            showPowerUpNotification('Shield Broken!');
+            invulnerableFrames = 90; // 1.5s of grace after shield breaks
+            // Remove the enemy we hit so we don't immediately collide again
+            enemies = enemies.filter(e => e !== hitEnemy);
+            explosions.push(new Explosion(hitEnemy.x + hitEnemy.width / 2, hitEnemy.y + hitEnemy.height / 2));
+            showPowerUpNotification('🛡️ Shield Broken!');
         } else {
             endGame();
         }
     }
 
     document.getElementById('score').textContent = score;
+
+    if (invulnerableFrames > 0) invulnerableFrames--;
 }
 
 // Draw everything
@@ -932,6 +1036,9 @@ function restartGame() {
     bigGunActive = false;
     bigGunUsesLeft = 0;
     aiEnabled = false;
+    aiFireCooldown = 0;
+    invulnerableFrames = 0;
+    aiSideToggle = false;
     clearEnemiesTimer = 0;
     player.x = canvas.width / 2 - 20;
     player.y = canvas.height - 80;
