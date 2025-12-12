@@ -18,6 +18,9 @@ let highScore = localStorage.getItem('carGameHighScore') || 0;
 document.getElementById('highScore').textContent = highScore;
 let carsShot = 0;
 document.getElementById('carCount').textContent = carsShot;
+let money = 0;
+document.getElementById('moneyAmount').textContent = money;
+let pendingRevive = false;
 
 // Energy / Hyper mode
 let energy = 0;
@@ -82,6 +85,8 @@ let bigGunActive = false;
 let bigGunUsesLeft = 0;
 let clearEnemiesTimer = 0;
 const CLEAR_ENEMIES_DURATION = 360; // 6 seconds at ~60fps
+const MONEY_VALUE = 1;
+const MONEY_MAX_BAR = 1000;
 
 // Soundtrack (procedural, relaxing, ~60s loop)
 let audioCtx = null;
@@ -444,7 +449,14 @@ class PowerUp {
         this.x = Math.random() * (canvas.width - this.width);
         this.y = -this.height;
         this.speed = 2;
-        this.type = Math.random() > 0.5 ? 'shield' : 'speed';
+        const roll = Math.random();
+        if (roll < 0.33) {
+            this.type = 'shield';
+        } else if (roll < 0.66) {
+            this.type = 'speed';
+        } else {
+            this.type = 'money';
+        }
     }
 
     update() {
@@ -460,13 +472,22 @@ class PowerUp {
             ctx.strokeStyle = '#FFA500';
             ctx.lineWidth = 2;
             ctx.stroke();
-        } else {
+        } else if (this.type === 'speed') {
             ctx.fillStyle = '#00FF00';
             ctx.fillRect(this.x, this.y, this.width, this.height);
             ctx.fillStyle = '#FFFFFF';
             ctx.font = 'bold 20px Arial';
             ctx.textAlign = 'center';
             ctx.fillText('⚡', this.x + 15, this.y + 22);
+        } else {
+            ctx.fillStyle = '#4CAF50';
+            ctx.beginPath();
+            ctx.arc(this.x + 15, this.y + 15, 15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('$', this.x + 15, this.y + 20);
         }
     }
 
@@ -490,6 +511,17 @@ function aiTargetX() {
         if (dy > 0 && dy < nearestDy) {
             nearestDy = dy;
             nearestEnemy = e;
+        }
+    }
+    // Find nearest shield powerup ahead to attract toward safely
+    let nearestShield = null;
+    let nearestShieldDy = Number.POSITIVE_INFINITY;
+    for (const p of powerups) {
+        if (p.type !== 'shield') continue;
+        const dy = player.y - (p.y + p.height);
+        if (dy > 0 && dy < nearestShieldDy) {
+            nearestShieldDy = dy;
+            nearestShield = p;
         }
     }
 
@@ -531,6 +563,15 @@ function aiTargetX() {
             const dxEnemy = Math.abs(candidateCenter - enemyCenter);
             const attraction = Math.max(0, 240 - dxEnemy);
             score -= attraction * 4;
+        }
+        // Attraction toward nearest shield if one is ahead (priority over enemy)
+        if (nearestShield && nearestShieldDy > 0) {
+            const shieldCenter = nearestShield.x + nearestShield.width / 2;
+            const candidateCenter = pos + player.width / 2;
+            const dxShield = Math.abs(candidateCenter - shieldCenter);
+            const shieldAttraction = Math.max(0, 280 - dxShield);
+            // Stronger pull toward shield, but still subject to safety penalties above
+            score -= shieldAttraction * 8;
         }
         if (score < bestScore) {
             bestScore = score;
@@ -718,7 +759,7 @@ function checkPowerUpCollision() {
                 player.hasShield = true;
                 player.shieldTimer = 300;
                 showPowerUpNotification('🛡️ Shield Activated!');
-            } else {
+            } else if (powerup.type === 'speed') {
                 score += 50;
                 // Speed powerup now also charges energy
                 energy = Math.min(MAX_ENERGY, energy + 30);
@@ -728,6 +769,18 @@ function checkPowerUpCollision() {
                 if (fillEl) {
                     fillEl.style.width = Math.floor((energy / MAX_ENERGY) * 100) + '%';
                 }
+            } else if (powerup.type === 'money') {
+                money += MONEY_VALUE;
+                const fillEl = document.getElementById('moneyFill');
+                const amountEl = document.getElementById('moneyAmount');
+                if (fillEl) {
+                    const pct = Math.min(100, (money / MONEY_MAX_BAR) * 100);
+                    fillEl.style.width = pct + '%';
+                }
+                if (amountEl) {
+                    amountEl.textContent = money;
+                }
+                showPowerUpNotification(`💰 +$${MONEY_VALUE}`);
             }
             powerups.splice(i, 1);
         }
@@ -1043,8 +1096,8 @@ function restartGame() {
     player.x = canvas.width / 2 - 20;
     player.y = canvas.height - 80;
     player.dx = 0;
-    player.hasShield = false;
-    player.shieldTimer = 0;
+    player.hasShield = true;      // start with shield
+    player.shieldTimer = 300;     // ~5 seconds at 60fps
     // Reset movement and speed-related states
     player.baseSpeed = DEFAULT_BASE_SPEED;
     player.speed = player.baseSpeed;
@@ -1057,6 +1110,15 @@ function restartGame() {
     hyperActive = false;
     hyperTimer = 0;
     savedSpawnRate = null;
+    money = 0;
+    const moneyFill = document.getElementById('moneyFill');
+    const moneyAmountEl = document.getElementById('moneyAmount');
+    if (moneyFill) {
+        moneyFill.style.width = '0%';
+    }
+    if (moneyAmountEl) {
+        moneyAmountEl.textContent = money;
+    }
     initStars();
     const fillEl = document.getElementById('energyFill');
     if (fillEl) {
@@ -1085,6 +1147,8 @@ function initGame() {
     // Initialize player position now that canvas exists
     player.x = Math.floor(canvas.width / 2 - player.width / 2);
     player.y = canvas.height - 80;
+    player.hasShield = true;
+    player.shieldTimer = 300; // ~5 seconds start shield
     // Initialize starfield with correct canvas dimensions
     initStars();
     console.log('Game initialized successfully', { canvas: canvas.width + 'x' + canvas.height, ctx });
