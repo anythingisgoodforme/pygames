@@ -18,9 +18,10 @@ let highScore = localStorage.getItem('carGameHighScore') || 0;
 document.getElementById('highScore').textContent = highScore;
 let carsShot = 0;
 document.getElementById('carCount').textContent = carsShot;
-let money = 0;
-document.getElementById('moneyAmount').textContent = money;
+let money = parseInt(localStorage.getItem('carGameMoney') || '0', 10);
 let pendingRevive = false;
+let moneyRainTriggered = false;
+let inComputerWorld = false;
 
 // Energy / Hyper mode
 let energy = 0;
@@ -72,6 +73,7 @@ let aiEnabled = false;
 let aiFireCooldown = 0;
 let aiSideToggle = false;
 let invulnerableFrames = 0;
+let spawnLockFrames = 0;
 let enemySpeed = DEFAULT_ENEMY_SPEED;
 let spawnRate = DEFAULT_SPAWN_RATE;
 let frameCount = 0;
@@ -118,14 +120,15 @@ function stopSoundtrack() {
 
 // Bullet class for gun mechanic
 class Bullet {
-    constructor(x, y, targetX = null) {
+    constructor(x, y, targetX = null, vx = 0, vy = -8) {
         this.x = x;
         this.y = y;
         this.width = 5;
         this.height = 15;
-        this.speed = 8;
+        this.speed = vy; // vertical component
         this.targetX = targetX;
         this.homingMax = 2.4;
+        this.vx = vx;
     }
 
     update() {
@@ -135,8 +138,10 @@ class Bullet {
             const dx = this.targetX - center;
             const step = Math.max(-this.homingMax, Math.min(this.homingMax, dx * 0.12));
             this.x += step;
+        } else {
+            this.x += this.vx;
         }
-        this.y -= this.speed;
+        this.y += this.speed;
     }
 
     draw() {
@@ -191,6 +196,44 @@ function setKeyState(e, state) {
     if (!raw) return;
     keys[raw] = state;
     keys[raw.toLowerCase()] = state;
+}
+
+function updateMoneyDisplay() {
+    const fillEl = document.getElementById('moneyFill');
+    const amountEl = document.getElementById('moneyAmount');
+    if (fillEl) {
+        const pct = Math.min(100, (money / MONEY_MAX_BAR) * 100);
+        fillEl.style.width = pct + '%';
+    }
+    if (amountEl) {
+        amountEl.textContent = money;
+    }
+}
+
+function spawnMoneyBurst(count) {
+    for (let i = 0; i < count; i++) {
+        const p = {
+            x: Math.random() * (canvas.width - 30),
+            y: -Math.random() * 200 - 30,
+            width: 30,
+            height: 30,
+            speed: 2,
+            type: 'money',
+            update() { this.y += this.speed; },
+            isOffScreen() { return this.y > canvas.height; },
+            draw() {
+                ctx.fillStyle = '#4CAF50';
+                ctx.beginPath();
+                ctx.arc(this.x + 15, this.y + 15, 15, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('$', this.x + 15, this.y + 20);
+            }
+        };
+        powerups.push(p);
+    }
 }
 
 function handleFireAction() {
@@ -293,6 +336,7 @@ window.addEventListener('keyup', (e) => {
 function initMobileControls(canvasElement) {
     const touchOverlay = document.getElementById('touchOverlay');
     const restartBtn = document.getElementById('restartBtn');
+    const reviveBtn = document.getElementById('reviveBtn');
     const shootBtn = document.getElementById('shootBtn');
     const hyperBtn = document.getElementById('hyperBtn');
     const brakeBtn = document.getElementById('brakeBtn');
@@ -365,6 +409,22 @@ function initMobileControls(canvasElement) {
         console.log('Restart button listener attached');
     } else {
         console.log('Restart button not found');
+    }
+
+    if (reviveBtn) {
+        reviveBtn.addEventListener('click', () => {
+            if (!pendingRevive) return;
+            if (money >= 10) {
+                money -= 10;
+                updateMoneyDisplay();
+                localStorage.setItem('carGameMoney', money);
+                document.getElementById('gameOver').style.display = 'none';
+                pendingRevive = false;
+                reviveGame();
+            } else {
+                showPowerUpNotification('Not enough money to revive!');
+            }
+        });
     }
 
     const safePrevent = (e) => {
@@ -720,6 +780,80 @@ function drawPlayer() {
     }
 }
 
+function drawDinoScenery() {
+    const horizon = canvas.height * 0.65;
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, '#f2d8a7');
+    grad.addColorStop(1, '#d5a45a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Mountains
+    ctx.fillStyle = '#b57f3b';
+    ctx.beginPath();
+    ctx.moveTo(-40, horizon + 40);
+    ctx.lineTo(80, horizon - 70);
+    ctx.lineTo(210, horizon + 40);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(140, horizon + 60);
+    ctx.lineTo(280, horizon - 50);
+    ctx.lineTo(440, horizon + 60);
+    ctx.closePath();
+    ctx.fill();
+    // Cacti
+    ctx.fillStyle = '#2f6b2c';
+    [60, 180, 330].forEach(x => {
+        ctx.fillRect(x, horizon - 30, 12, 60);
+        ctx.fillRect(x - 10, horizon, 10, 25);
+        ctx.fillRect(x + 12, horizon - 10, 10, 25);
+    });
+}
+
+function drawComputerScenery() {
+    const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    grad.addColorStop(0, '#0b1021');
+    grad.addColorStop(1, '#162447');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Grid
+    ctx.strokeStyle = 'rgba(0,255,255,0.25)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= canvas.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+    }
+    for (let y = 0; y <= canvas.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+    }
+
+    // Scanlines
+    ctx.strokeStyle = 'rgba(0,255,255,0.08)';
+    ctx.lineWidth = 2;
+    for (let y = 10; y < canvas.height; y += 10) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+    }
+
+    // Floating nodes
+    ctx.fillStyle = '#00e0ff';
+    for (let i = 0; i < 20; i++) {
+        const nx = (Math.sin((frameCount + i * 10) * 0.05) * 0.4 + 0.5) * canvas.width;
+        const ny = (Math.cos((frameCount + i * 8) * 0.04) * 0.4 + 0.5) * canvas.height;
+        ctx.beginPath();
+        ctx.arc(nx, ny, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
 // Spawn enemies and powerups
 function spawnEntity() {
     if (Math.random() < spawnRate) {
@@ -771,15 +905,8 @@ function checkPowerUpCollision() {
                 }
             } else if (powerup.type === 'money') {
                 money += MONEY_VALUE;
-                const fillEl = document.getElementById('moneyFill');
-                const amountEl = document.getElementById('moneyAmount');
-                if (fillEl) {
-                    const pct = Math.min(100, (money / MONEY_MAX_BAR) * 100);
-                    fillEl.style.width = pct + '%';
-                }
-                if (amountEl) {
-                    amountEl.textContent = money;
-                }
+                updateMoneyDisplay();
+                localStorage.setItem('carGameMoney', money);
                 showPowerUpNotification(`💰 +$${MONEY_VALUE}`);
             }
             powerups.splice(i, 1);
@@ -835,11 +962,11 @@ function showPowerUpNotification(text) {
 }
 
 // Shoot bullet
-function shootBullet(targetX = null, originX = null) {
-    // Fire from center of player car unless an origin override is provided (autopilot uses sides)
+function shootBullet(targetX = null, originX = null, vx = 0, vy = -8, originY = null) {
+    // Fire from center of player car unless an origin override is provided (autopilot uses corners)
     const bulletX = originX !== null ? originX : player.x + player.width / 2 - 2.5;
-    const bulletY = player.y;
-    bullets.push(new Bullet(bulletX, bulletY, targetX));
+    const bulletY = originY !== null ? originY : player.y;
+    bullets.push(new Bullet(bulletX, bulletY, targetX, vx, vy));
 }
 
 // Hyper mode control
@@ -871,10 +998,14 @@ function update() {
 
     frameCount++;
     if (aiFireCooldown > 0) aiFireCooldown--;
+    if (invulnerableFrames > 0) invulnerableFrames--;
     
     // Update clear enemies timer
     if (clearEnemiesTimer > 0) {
         clearEnemiesTimer--;
+    }
+    if (spawnLockFrames > 0) {
+        spawnLockFrames--;
     }
 
     updatePlayer();
@@ -886,18 +1017,31 @@ function update() {
             const enemyCenter = enemy.x + enemy.width / 2;
             const dx = Math.abs(playerCenter - enemyCenter);
             const dy = player.y - (enemy.y + enemy.height);
-            return dx < (player.width / 2 + enemy.width / 2 + 8) && dy > 0 && dy < 240;
+            return dx < (player.width / 2 + enemy.width / 2 + 8) && dy > 0 && dy < 260;
         });
-        if (target) {
-            const sideX = aiSideToggle ? (player.x + player.width - 5) : player.x;
-            aiSideToggle = !aiSideToggle;
-            shootBullet(target.x + target.width / 2, sideX);
+        const dangerClose = enemies.some(enemy => {
+            const overlapX = !(player.x + player.width < enemy.x || player.x > enemy.x + enemy.width);
+            const gapY = player.y - (enemy.y + enemy.height);
+            return overlapX && gapY > -30 && gapY < 100;
+        });
+        if (target || dangerClose) {
+            const leftX = player.x;
+            const rightX = player.x + player.width - 5;
+            const topY = player.y;
+            const bottomY = player.y + player.height - 5;
+            // Fire from the corners: forward (top corners), backward (bottom corners), left/right from top corners
+            shootBullet(null, leftX, 0, -8, topY);    // forward from top-left
+            shootBullet(null, rightX, 0, -8, topY);   // forward from top-right
+            shootBullet(null, leftX, 0, 8, bottomY);  // backward from bottom-left
+            shootBullet(null, rightX, 0, 8, bottomY); // backward from bottom-right
+            shootBullet(null, leftX, -8, 0, topY);    // left from top-left
+            shootBullet(null, rightX, 8, 0, topY);    // right from top-right
             aiFireCooldown = AI_FIRE_COOLDOWN_FRAMES;
         }
     }
     
     // Don't spawn enemies while big gun clear effect is active
-    if (clearEnemiesTimer <= 0) {
+    if (clearEnemiesTimer <= 0 && spawnLockFrames <= 0) {
         spawnEntity();
     }
 
@@ -961,6 +1105,13 @@ function update() {
         spawnRate += 0.001;
         level = Math.floor(frameCount / 150) + 1;
         document.getElementById('level').textContent = level;
+        if (level > 25 && !moneyRainTriggered) {
+            enemies = [];
+            spawnLockFrames = 240; // pause spawns for ~4s during money rain
+            spawnMoneyBurst(25);
+            moneyRainTriggered = true;
+            showPowerUpNotification('💰 Money Rain!');
+        }
     }
 
     // Check collision with shield / invulnerability
@@ -990,15 +1141,23 @@ function draw() {
         console.error('Canvas or context not initialized');
         return;
     }
+    const inDinoWorld = level > 10 && level < 33;
+    const inComputerWorld = level >= 33;
     
     // Clear canvas with blue road
-    if (hyperActive) {
-        // Slightly darker background during hyper
-        ctx.fillStyle = '#0b2b3a';
+    if (inComputerWorld) {
+        drawComputerScenery();
+    } else if (inDinoWorld) {
+        drawDinoScenery();
     } else {
-        ctx.fillStyle = '#1a5f9f';
+        if (hyperActive) {
+            // Slightly darker background during hyper
+            ctx.fillStyle = '#0b2b3a';
+        } else {
+            ctx.fillStyle = '#1a5f9f';
+        }
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // If big gun clear effect is active, show white overlay
     if (clearEnemiesTimer > 0) {
@@ -1006,15 +1165,39 @@ function draw() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    // Draw road lines
-    ctx.strokeStyle = 'white';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([20, 10]);
-    ctx.beginPath();
-    ctx.moveTo(canvas.width / 2, 0);
-    ctx.lineTo(canvas.width / 2, canvas.height);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    if (!inDinoWorld && !inComputerWorld) {
+        // Draw road lines
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([20, 10]);
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, 0);
+        ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    } else if (inDinoWorld) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 18]);
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2 - 60, 0);
+        ctx.lineTo(canvas.width / 2 - 60, canvas.height);
+        ctx.moveTo(canvas.width / 2 + 60, 0);
+        ctx.lineTo(canvas.width / 2 + 60, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    } else if (inComputerWorld) {
+        ctx.strokeStyle = 'rgba(0,255,255,0.5)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 12]);
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2 - 70, 0);
+        ctx.lineTo(canvas.width / 2 - 70, canvas.height);
+        ctx.moveTo(canvas.width / 2 + 70, 0);
+        ctx.lineTo(canvas.width / 2 + 70, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
 
     // If hyper, draw subtle starfield in background
     if (hyperActive) {
@@ -1053,6 +1236,7 @@ function gameLoop() {
 
 // End game
 function endGame() {
+    if (!gameRunning) return;
     gameRunning = false;
 
     if (score > highScore) {
@@ -1068,7 +1252,37 @@ function endGame() {
         carsShotFinalEl.textContent = carsShot;
     }
     document.getElementById('gameOver').style.display = 'flex';
+    const reviveBtn = document.getElementById('reviveBtn');
+    if (reviveBtn) {
+        reviveBtn.style.display = money >= 10 ? 'inline-block' : 'none';
+    }
+    pendingRevive = true;
     stopSoundtrack();
+}
+
+function reviveGame() {
+    pendingRevive = false;
+    gameRunning = true;
+    clearEnemiesTimer = 0;
+    enemies = [];
+    bullets = [];
+    explosions = [];
+    invulnerableFrames = 90;
+    player.x = canvas.width / 2 - 20;
+    player.y = canvas.height - 80;
+    player.dx = 0;
+    player.hasShield = true;
+    player.shieldTimer = 180; // 3s shield on revive
+    player.baseSpeed = DEFAULT_BASE_SPEED;
+    player.speed = player.baseSpeed;
+    player.boostTimer = 0;
+    player.isBraking = false;
+    aiEnabled = false;
+    aiFireCooldown = 0;
+    aiSideToggle = false;
+    document.getElementById('gameOver').style.display = 'none';
+    // Keep current score/level/money/carsShot
+    startSoundtrack();
 }
 
 // Restart game
@@ -1092,7 +1306,9 @@ function restartGame() {
     aiFireCooldown = 0;
     invulnerableFrames = 0;
     aiSideToggle = false;
+    spawnLockFrames = 0;
     clearEnemiesTimer = 0;
+    moneyRainTriggered = false;
     player.x = canvas.width / 2 - 20;
     player.y = canvas.height - 80;
     player.dx = 0;
@@ -1104,21 +1320,11 @@ function restartGame() {
     player.boostTimer = 0;
     player.isBraking = false;
     aiEnabled = false;
-
     // Reset energy / hyper
     energy = 0;
     hyperActive = false;
     hyperTimer = 0;
     savedSpawnRate = null;
-    money = 0;
-    const moneyFill = document.getElementById('moneyFill');
-    const moneyAmountEl = document.getElementById('moneyAmount');
-    if (moneyFill) {
-        moneyFill.style.width = '0%';
-    }
-    if (moneyAmountEl) {
-        moneyAmountEl.textContent = money;
-    }
     initStars();
     const fillEl = document.getElementById('energyFill');
     if (fillEl) {
@@ -1144,11 +1350,13 @@ function initGame() {
         console.error('Failed to get canvas 2D context!');
         return;
     }
+    pendingRevive = false;
     // Initialize player position now that canvas exists
     player.x = Math.floor(canvas.width / 2 - player.width / 2);
     player.y = canvas.height - 80;
     player.hasShield = true;
     player.shieldTimer = 300; // ~5 seconds start shield
+    updateMoneyDisplay();
     // Initialize starfield with correct canvas dimensions
     initStars();
     console.log('Game initialized successfully', { canvas: canvas.width + 'x' + canvas.height, ctx });
