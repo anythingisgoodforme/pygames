@@ -84,6 +84,9 @@ let technoActive = false;
 let funGain = null;
 let funInterval = null;
 let funMusicActive = false;
+let finishLineActive = false;
+let finishLineY = -50;
+let finishReached = false;
 let enemySpeed = DEFAULT_ENEMY_SPEED;
 let spawnRate = DEFAULT_SPAWN_RATE;
 let frameCount = 0;
@@ -348,6 +351,7 @@ function initMobileControls(canvasElement) {
     const touchOverlay = document.getElementById('touchOverlay');
     const restartBtn = document.getElementById('restartBtn');
     const reviveBtn = document.getElementById('reviveBtn');
+    const finishRestart = document.getElementById('finishRestart');
     const shootBtn = document.getElementById('shootBtn');
     const hyperBtn = document.getElementById('hyperBtn');
     const brakeBtn = document.getElementById('brakeBtn');
@@ -480,6 +484,14 @@ function initMobileControls(canvasElement) {
 
     if (bigGunBtn) {
         addPress(bigGunBtn, fireBigGun);
+    }
+
+    if (finishRestart) {
+        finishRestart.addEventListener('click', () => {
+            document.getElementById('finishOverlay').style.display = 'none';
+            finishReached = false;
+            restartGame();
+        });
     }
 }
 
@@ -1161,7 +1173,26 @@ function update() {
 
     if (invulnerableFrames > 0) invulnerableFrames--;
 
-    // Finish line logic removed
+    // Finish line for level 54+
+    if (level >= 55 && !finishReached && !finishLineActive) {
+        finishLineActive = true;
+        finishLineY = -40;
+        spawnLockFrames = 180;
+        enemies = [];
+    }
+    if (finishLineActive && !finishReached) {
+        finishLineY += 4;
+        if (finishLineY >= player.y) {
+            finishReached = true;
+            finishLineActive = false;
+            gameRunning = false;
+            stopDinoMusic();
+            stopTechno();
+            stopFunMusic();
+            const finishOverlay = document.getElementById('finishOverlay');
+            if (finishOverlay) finishOverlay.style.display = 'flex';
+        }
+    }
 }
 
 // Draw everything
@@ -1282,6 +1313,21 @@ function draw() {
     powerups.forEach(powerup => powerup.draw());
     bullets.forEach(bullet => bullet.draw());
     explosions.forEach(explosion => explosion.draw());
+
+    if (finishLineActive && !finishReached) {
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([12, 8]);
+        ctx.beginPath();
+        ctx.moveTo(0, finishLineY);
+        ctx.lineTo(canvas.width, finishLineY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 18px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('FINISH', canvas.width / 2, finishLineY - 10);
+    }
 }
 
 // Game loop
@@ -1368,6 +1414,9 @@ function restartGame() {
     invulnerableFrames = 0;
     aiSideToggle = false;
     spawnLockFrames = 0;
+    finishLineActive = false;
+    finishLineY = -50;
+    finishReached = false;
     clearEnemiesTimer = 0;
     moneyRainTriggered = false;
     player.x = canvas.width / 2 - 20;
