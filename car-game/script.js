@@ -7,9 +7,10 @@ const DEFAULT_ENEMY_SPEED = 3;
 const DEFAULT_SPAWN_RATE = 0.02;
 const HYPER_MULTIPLIER = 3;
 const HYPER_DURATION_FRAMES = 300; // 5 seconds at ~60fps
-const AI_SPEED_MULTIPLIER = 1.4; // safer lateral speed for autopilot
+const AI_SPEED_MULTIPLIER = 3.5; // super fast autopilot
 const AI_LOOKAHEAD_FRAMES = 90; // longer lookahead for safety
-const AI_FIRE_COOLDOWN_FRAMES = 20; // ~0.33s between auto shots
+const AI_FIRE_COOLDOWN_FRAMES = 12; // slightly slower auto-fire
+const MAIN_MUSIC_GAIN = 0.08;
 
 let gameRunning = true;
 let score = 0;
@@ -74,9 +75,19 @@ let aiFireCooldown = 0;
 let aiSideToggle = false;
 let invulnerableFrames = 0;
 let spawnLockFrames = 0;
+let dinoPopGain = null;
+let dinoPopInterval = null;
+let dinoMusicActive = false;
+let technoGain = null;
+let technoInterval = null;
+let technoActive = false;
+let funGain = null;
+let funInterval = null;
+let funMusicActive = false;
 let enemySpeed = DEFAULT_ENEMY_SPEED;
 let spawnRate = DEFAULT_SPAWN_RATE;
 let frameCount = 0;
+let mainMusicMuted = false;
 
 // Big gun mechanic
 let killCount = 0;
@@ -519,6 +530,13 @@ class PowerUp {
         }
     }
 
+    if (finishRestart) {
+        finishRestart.addEventListener('click', () => {});
+    }
+    if (finishLike) {
+        finishLike.addEventListener('click', () => {});
+    }
+
     update() {
         this.y += this.speed;
     }
@@ -746,8 +764,11 @@ function updatePlayer() {
 
 // Draw player
 function drawPlayer() {
-    ctx.fillStyle = '#4A90E2';
+    ctx.fillStyle = '#ffb347'; // brighter car color for visibility
     ctx.fillRect(player.x, player.y, player.width, player.height);
+    ctx.strokeStyle = '#d15d00';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(player.x, player.y, player.width, player.height);
 
     // Car details
     ctx.fillStyle = '#FFD93D';
@@ -1010,34 +1031,20 @@ function update() {
 
     updatePlayer();
 
-    // Autopilot firing: shoot a bullet if an enemy is directly ahead within range
-    if (aiEnabled && aiFireCooldown <= 0) {
-        const playerCenter = player.x + player.width / 2;
-        const target = enemies.find(enemy => {
-            const enemyCenter = enemy.x + enemy.width / 2;
-            const dx = Math.abs(playerCenter - enemyCenter);
-            const dy = player.y - (enemy.y + enemy.height);
-            return dx < (player.width / 2 + enemy.width / 2 + 8) && dy > 0 && dy < 260;
-        });
-        const dangerClose = enemies.some(enemy => {
-            const overlapX = !(player.x + player.width < enemy.x || player.x > enemy.x + enemy.width);
-            const gapY = player.y - (enemy.y + enemy.height);
-            return overlapX && gapY > -30 && gapY < 100;
-        });
-        if (target || dangerClose) {
-            const leftX = player.x;
-            const rightX = player.x + player.width - 5;
-            const topY = player.y;
-            const bottomY = player.y + player.height - 5;
-            // Fire from the corners: forward (top corners), backward (bottom corners), left/right from top corners
-            shootBullet(null, leftX, 0, -8, topY);    // forward from top-left
-            shootBullet(null, rightX, 0, -8, topY);   // forward from top-right
-            shootBullet(null, leftX, 0, 8, bottomY);  // backward from bottom-left
-            shootBullet(null, rightX, 0, 8, bottomY); // backward from bottom-right
-            shootBullet(null, leftX, -8, 0, topY);    // left from top-left
-            shootBullet(null, rightX, 8, 0, topY);    // right from top-right
-            aiFireCooldown = AI_FIRE_COOLDOWN_FRAMES;
-        }
+    // Autopilot firing: shoot when enemies exist or danger is close
+    if (aiEnabled && aiFireCooldown <= 0 && enemies.length > 0) {
+        const leftX = player.x;
+        const rightX = player.x + player.width - 5;
+        const topY = player.y;
+        const bottomY = player.y + player.height - 5;
+        // Fire from the corners: forward (top corners), backward (bottom corners), left/right from top corners
+        shootBullet(null, leftX, 0, -8, topY);    // forward from top-left
+        shootBullet(null, rightX, 0, -8, topY);   // forward from top-right
+        shootBullet(null, leftX, 0, 8, bottomY);  // backward from bottom-left
+        shootBullet(null, rightX, 0, 8, bottomY); // backward from bottom-right
+        shootBullet(null, leftX, -8, 0, topY);    // left from top-left
+        shootBullet(null, rightX, 8, 0, topY);    // right from top-right
+        aiFireCooldown = AI_FIRE_COOLDOWN_FRAMES;
     }
     
     // Don't spawn enemies while big gun clear effect is active
@@ -1113,6 +1120,26 @@ function update() {
             showPowerUpNotification('💰 Money Rain!');
         }
     }
+    const inDinoWorld = level > 10 && level < 33;
+    const inComputerWorld = level >= 33 && level < 45;
+    const inFunWorld = level >= 45;
+    if (inFunWorld) {
+        startFunMusic();
+        stopDinoMusic();
+        stopTechno();
+    } else if (inComputerWorld) {
+        startTechno();
+        stopDinoMusic();
+        stopFunMusic();
+    } else if (inDinoWorld) {
+        startDinoMusic();
+        stopTechno();
+        stopFunMusic();
+    } else {
+        stopDinoMusic();
+        stopTechno();
+        stopFunMusic();
+    }
 
     // Check collision with shield / invulnerability
     const hitEnemy = invulnerableFrames > 0 ? null : checkCollision();
@@ -1133,6 +1160,8 @@ function update() {
     document.getElementById('score').textContent = score;
 
     if (invulnerableFrames > 0) invulnerableFrames--;
+
+    // Finish line logic removed
 }
 
 // Draw everything
@@ -1142,10 +1171,27 @@ function draw() {
         return;
     }
     const inDinoWorld = level > 10 && level < 33;
-    const inComputerWorld = level >= 33;
+    const inComputerWorld = level >= 33 && level < 45;
+    const inFunWorld = level >= 45;
     
-    // Clear canvas with blue road
-    if (inComputerWorld) {
+    // Clear canvas with themed backgrounds
+    if (inFunWorld) {
+        // Bright fun gradient with confetti
+        const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        grad.addColorStop(0, '#ff9a9e');
+        grad.addColorStop(1, '#fad0c4');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Confetti dots
+        for (let i = 0; i < 80; i++) {
+            ctx.fillStyle = ['#ff5f6d', '#ffc371', '#4facfe', '#43e97b'][i % 4];
+            const x = (i * 53 + frameCount * 2) % canvas.width;
+            const y = (i * 37 + frameCount * 3) % canvas.height;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    } else if (inComputerWorld) {
         drawComputerScenery();
     } else if (inDinoWorld) {
         drawDinoScenery();
@@ -1165,7 +1211,7 @@ function draw() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    if (!inDinoWorld && !inComputerWorld) {
+    if (!inDinoWorld && !inComputerWorld && !inFunWorld) {
         // Draw road lines
         ctx.strokeStyle = 'white';
         ctx.lineWidth = 2;
@@ -1195,6 +1241,17 @@ function draw() {
         ctx.lineTo(canvas.width / 2 - 70, canvas.height);
         ctx.moveTo(canvas.width / 2 + 70, 0);
         ctx.lineTo(canvas.width / 2 + 70, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    } else if (inFunWorld) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 14]);
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2 - 80, 0);
+        ctx.lineTo(canvas.width / 2 - 80, canvas.height);
+        ctx.moveTo(canvas.width / 2 + 80, 0);
+        ctx.lineTo(canvas.width / 2 + 80, canvas.height);
         ctx.stroke();
         ctx.setLineDash([]);
     }
@@ -1238,6 +1295,9 @@ function gameLoop() {
 function endGame() {
     if (!gameRunning) return;
     gameRunning = false;
+    stopDinoMusic();
+    stopTechno();
+    stopFunMusic();
 
     if (score > highScore) {
         highScore = score;
@@ -1283,6 +1343,7 @@ function reviveGame() {
     document.getElementById('gameOver').style.display = 'none';
     // Keep current score/level/money/carsShot
     startSoundtrack();
+    // Dino music will resume on next update if in dino world
 }
 
 // Restart game
@@ -1374,7 +1435,7 @@ function startSoundtrack() {
         audioCtx.resume();
     }
     masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0.08;
+    masterGain.gain.value = mainMusicMuted ? 0 : MAIN_MUSIC_GAIN;
     masterGain.connect(audioCtx.destination);
 
     // 15-chord progression @4s each => ~60s loop
@@ -1431,6 +1492,243 @@ function startSoundtrack() {
     // Schedule first chord immediately and then loop every chordDuration seconds
     scheduleChord();
     soundtrackIntervalId = setInterval(scheduleChord, chordDuration * 1000);
+}
+
+// Pop loop for dino world
+function startDinoMusic() {
+    if (dinoMusicActive) return;
+    if (!audioCtx || !masterGain) {
+        startSoundtrack();
+    }
+    if (!audioCtx || !masterGain) return;
+    dinoMusicActive = true;
+    mainMusicMuted = true;
+    masterGain.gain.setValueAtTime(0, audioCtx.currentTime);
+
+    dinoPopGain = audioCtx.createGain();
+    dinoPopGain.gain.value = 0.08;
+    dinoPopGain.connect(audioCtx.destination);
+
+    const chords = [
+        [261.63, 329.63, 392.0], // C major
+        [293.66, 369.99, 440.0], // D major
+        [329.63, 415.3, 493.88], // E major-ish
+        [261.63, 329.63, 392.0], // back to C
+    ];
+    let idx = 0;
+    const beatMs = 450; // slower pop pace
+
+    const playBeat = () => {
+        const now = audioCtx.currentTime;
+        const freqs = chords[idx];
+        freqs.forEach((f, i) => {
+            const osc = audioCtx.createOscillator();
+            osc.type = 'square';
+            osc.frequency.value = f;
+            const g = audioCtx.createGain();
+            const startGain = 0.0 + i * 0.01;
+            g.gain.setValueAtTime(startGain, now);
+            g.gain.linearRampToValueAtTime(0.12, now + 0.05);
+            g.gain.linearRampToValueAtTime(0.0, now + 0.4);
+            osc.connect(g);
+            g.connect(dinoPopGain);
+            osc.start(now);
+            osc.stop(now + 0.45);
+        });
+        idx = (idx + 1) % chords.length;
+    };
+
+    playBeat();
+    dinoPopInterval = setInterval(playBeat, beatMs);
+}
+
+function stopDinoMusic() {
+    if (!dinoMusicActive) return;
+    dinoMusicActive = false;
+    if (dinoPopInterval) {
+        clearInterval(dinoPopInterval);
+        dinoPopInterval = null;
+    }
+    if (dinoPopGain && audioCtx) {
+        const now = audioCtx.currentTime;
+        dinoPopGain.gain.setValueAtTime(dinoPopGain.gain.value, now);
+        dinoPopGain.gain.linearRampToValueAtTime(0, now + 0.4);
+    }
+    setTimeout(() => {
+        if (dinoPopGain) {
+            dinoPopGain.disconnect();
+            dinoPopGain = null;
+        }
+        if (masterGain && audioCtx) {
+            masterGain.gain.setValueAtTime(0, audioCtx.currentTime);
+            masterGain.gain.linearRampToValueAtTime(MAIN_MUSIC_GAIN, audioCtx.currentTime + 0.4);
+            mainMusicMuted = false;
+        }
+    }, 500);
+}
+
+// Techno loop for computer world
+function startTechno() {
+    if (technoActive) return;
+    if (!audioCtx) startSoundtrack();
+    if (!audioCtx) return;
+    technoActive = true;
+    // Pause other music
+    mainMusicMuted = true;
+    if (masterGain) masterGain.gain.setValueAtTime(0, audioCtx.currentTime);
+    stopDinoMusic();
+    stopFunMusic();
+
+    technoGain = audioCtx.createGain();
+    technoGain.gain.value = 0.08;
+    technoGain.connect(audioCtx.destination);
+
+    const steps = [0, 7, 12, 5]; // minor flavor
+    let stepIdx = 0;
+    const beatMs = 320;
+
+    const playBeat = () => {
+        const now = audioCtx.currentTime;
+        const baseFreq = 110 * Math.pow(2, steps[stepIdx] / 12);
+
+        const kick = audioCtx.createOscillator();
+        kick.type = 'sine';
+        kick.frequency.setValueAtTime(80, now);
+        kick.frequency.exponentialRampToValueAtTime(40, now + 0.12);
+        const kickGain = audioCtx.createGain();
+        kickGain.gain.setValueAtTime(0.12, now);
+        kickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        kick.connect(kickGain);
+        kickGain.connect(technoGain);
+        kick.start(now);
+        kick.stop(now + 0.15);
+
+        const bass = audioCtx.createOscillator();
+        bass.type = 'square';
+        bass.frequency.value = baseFreq;
+        const bassGain = audioCtx.createGain();
+        bassGain.gain.setValueAtTime(0.05, now);
+        bassGain.gain.linearRampToValueAtTime(0, now + 0.18);
+        bass.connect(bassGain);
+        bassGain.connect(technoGain);
+        bass.start(now);
+        bass.stop(now + 0.2);
+
+        stepIdx = (stepIdx + 1) % steps.length;
+    };
+
+    playBeat();
+    technoInterval = setInterval(playBeat, beatMs);
+}
+
+function stopTechno() {
+    if (!technoActive) return;
+    technoActive = false;
+    if (technoInterval) {
+        clearInterval(technoInterval);
+        technoInterval = null;
+    }
+    if (technoGain && audioCtx) {
+        const now = audioCtx.currentTime;
+        technoGain.gain.setValueAtTime(technoGain.gain.value, now);
+        technoGain.gain.linearRampToValueAtTime(0, now + 0.3);
+    }
+    setTimeout(() => {
+        if (technoGain) {
+            technoGain.disconnect();
+            technoGain = null;
+        }
+        // Restore main music gain when leaving techno
+        if (masterGain && audioCtx) {
+            masterGain.gain.setValueAtTime(0, audioCtx.currentTime);
+            masterGain.gain.linearRampToValueAtTime(MAIN_MUSIC_GAIN, audioCtx.currentTime + 0.4);
+            mainMusicMuted = false;
+        }
+    }, 400);
+}
+
+// Fun poppy loop for fun world
+function startFunMusic() {
+    if (funMusicActive) return;
+    if (!audioCtx) startSoundtrack();
+    if (!audioCtx) return;
+    funMusicActive = true;
+    mainMusicMuted = true;
+    if (masterGain) masterGain.gain.setValueAtTime(0, audioCtx.currentTime);
+    stopDinoMusic();
+    stopTechno();
+
+    funGain = audioCtx.createGain();
+    funGain.gain.value = 0.1;
+    funGain.connect(audioCtx.destination);
+
+    const freqs = [261.63, 293.66, 329.63, 349.23]; // C D E F loop
+    let idx = 0;
+    const beatMs = 380;
+
+    const playFunBeat = () => {
+        const now = audioCtx.currentTime;
+        const f = freqs[idx];
+        // Lead pluck
+        const osc = audioCtx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.value = f;
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0, now);
+        g.gain.linearRampToValueAtTime(0.12, now + 0.05);
+        g.gain.linearRampToValueAtTime(0, now + 0.3);
+        osc.connect(g);
+        g.connect(funGain);
+        osc.start(now);
+        osc.stop(now + 0.35);
+
+        // Claps
+        const noise = audioCtx.createBufferSource();
+        const bufferSize = audioCtx.sampleRate * 0.1;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        noise.buffer = buffer;
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.setValueAtTime(0.08, now);
+        noiseGain.gain.linearRampToValueAtTime(0, now + 0.1);
+        noise.connect(noiseGain);
+        noiseGain.connect(funGain);
+        noise.start(now + 0.18);
+        noise.stop(now + 0.28);
+
+        idx = (idx + 1) % freqs.length;
+    };
+
+    playFunBeat();
+    funInterval = setInterval(playFunBeat, beatMs);
+}
+
+function stopFunMusic() {
+    if (!funMusicActive) return;
+    funMusicActive = false;
+    if (funInterval) {
+        clearInterval(funInterval);
+        funInterval = null;
+    }
+    if (funGain && audioCtx) {
+        const now = audioCtx.currentTime;
+        funGain.gain.setValueAtTime(funGain.gain.value, now);
+        funGain.gain.linearRampToValueAtTime(0, now + 0.3);
+    }
+    setTimeout(() => {
+        if (funGain) {
+            funGain.disconnect();
+            funGain = null;
+        }
+        if (masterGain && audioCtx) {
+            masterGain.gain.setValueAtTime(0, audioCtx.currentTime);
+            masterGain.gain.linearRampToValueAtTime(MAIN_MUSIC_GAIN, audioCtx.currentTime + 0.4);
+            mainMusicMuted = false;
+        }
+    }, 400);
 }
 
 function attachSoundtrackStarter() {
