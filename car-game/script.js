@@ -15,11 +15,11 @@ const MAIN_MUSIC_GAIN = 0.08;
 let gameRunning = true;
 let score = 0;
 let level = 1;
-let highScore = localStorage.getItem('carGameHighScore') || 0;
+let highScore = 0;
 document.getElementById('highScore').textContent = highScore;
 let carsShot = 0;
 document.getElementById('carCount').textContent = carsShot;
-let money = parseInt(localStorage.getItem('carGameMoney') || '0', 10);
+let money = 0;
 let pendingRevive = false;
 let moneyRainTriggered = false;
 let inComputerWorld = false;
@@ -87,6 +87,9 @@ let funMusicActive = false;
 let finishLineActive = false;
 let finishLineY = -50;
 let finishReached = false;
+const MONEY_KEY = 'carGameMoneyEnc';
+const MONEY_PASS = 'finger';
+const HIGH_SCORE_KEY = 'carGameHighScoreEnc';
 let enemySpeed = DEFAULT_ENEMY_SPEED;
 let spawnRate = DEFAULT_SPAWN_RATE;
 let frameCount = 0;
@@ -224,6 +227,97 @@ function updateMoneyDisplay() {
     }
 }
 
+// Simple XOR + base64 obfuscation for money storage
+function xorEncode(str, key) {
+    let out = '';
+    for (let i = 0; i < str.length; i++) {
+        out += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return btoa(out);
+}
+
+function xorDecode(enc, key) {
+    try {
+        const data = atob(enc);
+        let out = '';
+        for (let i = 0; i < data.length; i++) {
+            out += String.fromCharCode(data.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+        }
+        return out;
+    } catch (e) {
+        return null;
+    }
+}
+
+function loadMoney() {
+    const enc = localStorage.getItem(MONEY_KEY);
+    if (!enc) {
+        money = 0;
+        return;
+    }
+    const decoded = xorDecode(enc, MONEY_PASS);
+    const val = decoded ? parseInt(decoded, 10) : 0;
+    money = Number.isFinite(val) ? val : 0;
+}
+
+function saveMoney() {
+    const enc = xorEncode(String(money), MONEY_PASS);
+    localStorage.setItem(MONEY_KEY, enc);
+}
+
+function loadHighScore() {
+    const enc = localStorage.getItem(HIGH_SCORE_KEY);
+    if (enc) {
+        const decoded = xorDecode(enc, MONEY_PASS);
+        const val = decoded ? parseInt(decoded, 10) : 0;
+        highScore = Number.isFinite(val) ? val : 0;
+        return;
+    }
+    const legacy = localStorage.getItem('carGameHighScore');
+    const val = legacy ? parseInt(legacy, 10) : 0;
+    highScore = Number.isFinite(val) ? val : 0;
+    // save back encoded
+    const encNew = xorEncode(String(highScore), MONEY_PASS);
+    localStorage.setItem(HIGH_SCORE_KEY, encNew);
+}
+
+function saveHighScore() {
+    const enc = xorEncode(String(highScore), MONEY_PASS);
+    localStorage.setItem(HIGH_SCORE_KEY, enc);
+}
+
+function openGodMode() {
+    const pw = prompt('Enter password for godmode');
+    if (pw !== MONEY_PASS) {
+        alert('Wrong password');
+        return;
+    }
+    const choice = (prompt('Type "money" to set money or "highscore" to set high score') || '').toLowerCase().trim();
+    if (choice === 'money') {
+        const amt = parseInt(prompt('Enter money amount'), 10);
+        if (Number.isFinite(amt) && amt >= 0) {
+            money = amt;
+            updateMoneyDisplay();
+            saveMoney();
+            showPowerUpNotification('Godmode money set');
+        } else {
+            alert('Invalid amount');
+        }
+    } else if (choice === 'highscore') {
+        const hs = parseInt(prompt('Enter high score'), 10);
+        if (Number.isFinite(hs) && hs >= 0) {
+            highScore = hs;
+            document.getElementById('highScore').textContent = highScore;
+            saveHighScore();
+            showPowerUpNotification('Godmode high score set');
+        } else {
+            alert('Invalid amount');
+        }
+    } else {
+        alert('No change made.');
+    }
+}
+
 function spawnMoneyBurst(count) {
     for (let i = 0; i < count; i++) {
         const p = {
@@ -336,6 +430,11 @@ window.addEventListener('keydown', (e) => {
         e.preventDefault();
         startHyper();
     }
+
+    // Godmode money set: Ctrl+Shift+G
+    if (e.key.toLowerCase() === 'g' && e.ctrlKey && e.shiftKey) {
+        openGodMode();
+    }
 });
 
 window.addEventListener('keyup', (e) => {
@@ -432,7 +531,7 @@ function initMobileControls(canvasElement) {
             if (money >= 10) {
                 money -= 10;
                 updateMoneyDisplay();
-                localStorage.setItem('carGameMoney', money);
+                saveMoney();
                 document.getElementById('gameOver').style.display = 'none';
                 pendingRevive = false;
                 reviveGame();
@@ -939,7 +1038,7 @@ function checkPowerUpCollision() {
             } else if (powerup.type === 'money') {
                 money += MONEY_VALUE;
                 updateMoneyDisplay();
-                localStorage.setItem('carGameMoney', money);
+                saveMoney();
                 showPowerUpNotification(`💰 +$${MONEY_VALUE}`);
             }
             powerups.splice(i, 1);
@@ -1347,7 +1446,7 @@ function endGame() {
 
     if (score > highScore) {
         highScore = score;
-        localStorage.setItem('carGameHighScore', highScore);
+        saveHighScore();
         document.getElementById('highScore').textContent = highScore;
     }
 
@@ -1461,6 +1560,10 @@ function initGame() {
         return;
     }
     pendingRevive = false;
+    loadMoney();
+    updateMoneyDisplay();
+    loadHighScore();
+    document.getElementById('highScore').textContent = highScore;
     // Initialize player position now that canvas exists
     player.x = Math.floor(canvas.width / 2 - player.width / 2);
     player.y = canvas.height - 80;
